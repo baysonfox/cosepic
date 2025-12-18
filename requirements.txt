@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+tortoise-orm
+aiosqlite<0.20.0
+Pillow
+pillow-avif-plugin
+python-multipart
+blurhash-python
