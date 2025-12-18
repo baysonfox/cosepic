@@ -62,6 +62,18 @@ class Album(models.Model):
     def __str__(self):
         return self.title
 
+    def __str__(self):
+        return self.filename
+
+class MediaType(str, Enum):
+    PICTURE = "P"
+    VIDEO = "V"
+    SELFIE = "S"
+    GIF = "G"
+
+    def __str__(self):
+        return self.value
+
 class Image(models.Model):
     """
     Represents an individual image file.
@@ -75,10 +87,11 @@ class Image(models.Model):
     width = fields.IntField()
     height = fields.IntField()
     blurhash = fields.CharField(max_length=255, null=True)
+    media_type = fields.CharEnumField(MediaType, default=MediaType.PICTURE)
     
     class Meta:
         table = "images"
         unique_together = (("album", "filename"),)
 
     def __str__(self):
-        return self.filename
+        return f"[{self.media_type}] {self.filename}"

@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
 import math
 
-from app.models import Album, Image
+from app.models import Album, Image, MediaType
 from app.schemas import AlbumOut, AlbumDetail, ImageOut
+from tortoise.functions import Count
 
 router = APIRouter(prefix="/api/albums", tags=["Gallery"])
 
@@ -35,10 +36,16 @@ async def get_albums(
     results = []
     for album in albums:
         count = await album.images.all().count()
-        # Convert to schema compatible dict to inject computed fields if needed
-        # But here straightforward
+        
+        # Get media type counts
+        stats = await Image.filter(album=album).annotate(count=Count("id")).group_by("media_type").values("media_type", "count")
+        # stats is list of dicts: [{'media_type': 'P', 'count': 10}, ...]
+        
+        counts = {s['media_type']: s['count'] for s in stats}
+        
         album_dto = AlbumOut.model_validate(album)
         album_dto.image_count = count
+        album_dto.media_counts = counts
         results.append(album_dto)
 
     return {
@@ -73,6 +80,7 @@ async def get_album(album_id: int):
             width=img.width,
             height=img.height,
             blurhash=img.blurhash,
+            media_type=img.media_type,
             url=f"/static/files/{album.path}/{img.filename}",
             thumbnail_url=f"/static/cache/{img.file_hash}.jpg"
         )

@@ -13,12 +13,21 @@ import blurhash
 from tortoise.transactions import in_transaction
 
 from app import settings
-from app.models import Album, Image, Tag, TagAlias, TagCategory
+from app.models import Album, Image, Tag, TagAlias, TagCategory, MediaType
 
 logger = logging.getLogger(__name__)
 
 # Supported image extensions
-IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.avif'}
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif'}
+VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.webm', '.mov', '.avi'}
+SUPPORTED_EXTENSIONS = IMAGE_EXTENSIONS | VIDEO_EXTENSIONS
+
+# Special subfolders that are part of the parent album
+SPECIAL_SUBFOLDERS = {
+    "selfie": MediaType.SELFIE,
+    "video": MediaType.VIDEO,
+    "gif": MediaType.GIF
+}
 
 class ScannerService:
     def __init__(self):
@@ -40,7 +49,7 @@ class ScannerService:
         for root, dirs, files in os.walk(self.root):
             for file in files:
                 file_path = Path(root) / file
-                if file_path.suffix.lower() in IMAGE_EXTENSIONS:
+                if file_path.suffix.lower() in SUPPORTED_EXTENSIONS:
                     try:
                         await self._process_image(file_path)
                         count += 1
@@ -64,10 +73,28 @@ class ScannerService:
             # For now, skip if hash exists as per spec "If hash exists in DB, skip".
             return
 
-        # 2. Extract Metadata from Path
+        # 2. Determine Album and Media Type from Path
         rel_path = file_path.relative_to(self.root)
-        album_path = rel_path.parent
+        parent_name = rel_path.parent.name.lower()
         
+        media_type = MediaType.PICTURE
+        
+        # Check if file is in a special subfolder (video, selfie, gif)
+        if parent_name in SPECIAL_SUBFOLDERS:
+            # It's a special type, and the album is the grandparent
+            media_type = SPECIAL_SUBFOLDERS[parent_name]
+            album_path = rel_path.parent.parent
+        else:
+            # Normal file, album is the parent
+            album_path = rel_path.parent
+            # Auto-detect type if not in special folder but has specific extension?
+            # User said "Others... will be separately stored". 
+            # But let's be safe: if it's a video file in root, mark as Video.
+            if file_path.suffix.lower() in VIDEO_EXTENSIONS:
+                media_type = MediaType.VIDEO
+            elif file_path.suffix.lower() == '.gif':
+                 media_type = MediaType.GIF
+
         # Get or Create Album
         album = await Album.get_or_create(
             path=str(album_path),
@@ -79,35 +106,43 @@ class ScannerService:
         await self._apply_path_tags(album, rel_path)
 
         # 4. Image Processing
-        # Generate Thumbnail
-        thumb_filename = f"{file_hash}.jpg" # Consistent filename based on hash
+        thumb_filename = f"{file_hash}.jpg"
         thumb_path = settings.THUMB_DIR / thumb_filename
+        blur_string = None
         
-        # If thumbnail doesn't exist, generate it
-        if not thumb_path.exists():
-             await self._run_blocking(self._generate_thumbnail, file_path, thumb_path)
+        # Skip visual processing for Videos
+        if media_type != MediaType.VIDEO:
+            # If thumbnail doesn't exist, generate it
+            if not thumb_path.exists():
+                 try:
+                    await self._run_blocking(self._generate_thumbnail, file_path, thumb_path)
+                 except Exception as e:
+                    logger.warning(f"Thumbnail generation failed for {file_path}: {e}")
 
-        # Generate BlurHash
-        # We need to read the image again or use the thumbnail for speed
-        # Using thumbnail is much faster for blurhash calculation
-        blur_string = await self._run_blocking(self._generate_blurhash, thumb_path)
+            # Generate BlurHash
+            if thumb_path.exists():
+                blur_string = await self._run_blocking(self._generate_blurhash, thumb_path)
 
         # 5. Save Image Record
         img = await Image.create(
             album=album,
             filename=file_path.name,
             file_hash=file_hash,
-            width=0, # TODO: Get actual dimensions
+            width=0, 
             height=0,
-            blurhash=blur_string
+            blurhash=blur_string,
+            media_type=media_type
         )
         
-        # Update dimensions from the actual file (or thumbnail context)
-        # We can implement a quick check
-        width, height = await self._run_blocking(self._get_image_dims, file_path)
-        img.width = width
-        img.height = height
-        await img.save()
+        # Update dimensions
+        if media_type != MediaType.VIDEO:
+            try:
+                width, height = await self._run_blocking(self._get_image_dims, file_path)
+                img.width = width
+                img.height = height
+                await img.save()
+            except Exception:
+                pass
         
         # Update Album Blurhash if empty
         if not album.blurhash:
@@ -219,8 +254,11 @@ class ScannerService:
             return None
 
     def _get_image_dims(self, path: Path) -> Tuple[int, int]:
-        with PILImage.open(path) as img:
-            return img.size
+        try:
+            with PILImage.open(path) as img:
+                return img.size
+        except Exception:
+            return (0, 0)
 
     async def _run_blocking(self, func, *args):
         loop = asyncio.get_running_loop()

@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 from pydantic import BaseModel
-from app.models import TagCategory
+from app.models import TagCategory, MediaType
 
 class TagOut(BaseModel):
     id: int
@@ -14,6 +14,7 @@ class TagOut(BaseModel):
 class ImageOut(BaseModel):
     id: int
     filename: str
+    media_type: MediaType
     # file_hash: str # maybe not needed for frontend immediately
     width: int
     height: int
@@ -31,6 +32,7 @@ class AlbumOut(BaseModel):
     blurhash: Optional[str] = None
     created_at: datetime
     image_count: int = 0
+    media_counts: Dict[str, int] = {}
     
     class Config:
         from_attributes = True
