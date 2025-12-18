@@ -4,7 +4,7 @@ import math
 
 from app.models import Album, Image, MediaType, TagCategory
 from app.models import Album, Image, MediaType, TagCategory
-from app.schemas import AlbumBase, AlbumOut, AlbumDetail, ImageOut
+from app.schemas import AlbumBase, AlbumOut, AlbumDetail, ImageOut, TagOut
 from tortoise.functions import Count
 
 router = APIRouter(prefix="/api/albums", tags=["Gallery"])
@@ -104,13 +104,23 @@ async def get_album(album_id: int):
             blurhash=img.blurhash,
             media_type=img.media_type,
             url=f"/static/files/{album.path}/{img.filename}",
-            thumbnail_url=f"/static/cache/{img.file_hash}.jpg"
+            thumbnail_url=f"/static/cache/thumbnails/{img.file_hash}.jpg"
         )
         images_out.append(img_dto)
         
     # Convert album
-    album_dto = AlbumDetail.model_validate(album)
-    album_dto.images = images_out
+    # Must use AlbumBase to avoid validation error on "images" since ORM objects lack url/thumbnail_url
+    base_dto = AlbumBase.model_validate(album)
+    
+    # Calculate media counts for consistency
+    stats = await Image.filter(album=album).annotate(count=Count("id")).group_by("media_type").values("media_type", "count")
+    base_dto.media_counts = {s['media_type']: s['count'] for s in stats}
+    
+    album_dto = AlbumDetail(
+        **base_dto.model_dump(),
+        tags=[TagOut.model_validate(t) for t in album.tags],
+        images=images_out
+    )
     # Tag validation handles itself via from_attributes
     
     return album_dto
