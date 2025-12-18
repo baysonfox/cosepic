@@ -2,8 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import List, Optional, Dict, Any
 import math
 
-from app.models import Album, Image, MediaType
-from app.schemas import AlbumOut, AlbumDetail, ImageOut
+from app.models import Album, Image, MediaType, TagCategory
+from app.models import Album, Image, MediaType, TagCategory
+from app.schemas import AlbumBase, AlbumOut, AlbumDetail, ImageOut
 from tortoise.functions import Count
 
 router = APIRouter(prefix="/api/albums", tags=["Gallery"])
@@ -43,9 +44,30 @@ async def get_albums(
         
         counts = {s['media_type']: s['count'] for s in stats}
         
-        album_dto = AlbumOut.model_validate(album)
-        album_dto.image_count = count
-        album_dto.media_counts = counts
+        base_dto = AlbumBase.model_validate(album)
+        base_dto.image_count = count
+        base_dto.media_counts = counts
+        
+        # Organize tags
+        categorized_tags = {
+            "coser": [],
+            "series": [],
+            "character": [],
+            "other": []
+        }
+        for tag in album.tags:
+            # tag.category is an Enum, use .value or str()
+            cat = tag.category.value if hasattr(tag.category, 'value') else str(tag.category)
+            if cat in categorized_tags:
+                categorized_tags[cat].append(tag.name)
+            else:
+                 # Fallback
+                 categorized_tags["other"].append(tag.name)
+        
+        album_dto = AlbumOut(
+            **base_dto.model_dump(),
+            tags=categorized_tags
+        )
         results.append(album_dto)
 
     return {

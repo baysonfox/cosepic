@@ -25,7 +25,7 @@ class ImageOut(BaseModel):
     class Config:
         from_attributes = True
 
-class AlbumOut(BaseModel):
+class AlbumBase(BaseModel):
     id: int
     path: str
     title: str
@@ -37,6 +37,9 @@ class AlbumOut(BaseModel):
     class Config:
         from_attributes = True
 
-class AlbumDetail(AlbumOut):
+class AlbumOut(AlbumBase):
+    tags: Dict[str, List[str]] = {}
+
+class AlbumDetail(AlbumBase):
     tags: List[TagOut] = []
     images: List[ImageOut] = []
