@@ -39,6 +39,7 @@ class AlbumBase(BaseModel):
 
 class AlbumOut(AlbumBase):
     tags: Dict[str, List[str]] = {}
+    cover_image: Optional[ImageOut] = None
 
 class AlbumDetail(AlbumBase):
     tags: List[TagOut] = []

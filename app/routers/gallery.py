@@ -64,9 +64,25 @@ async def get_albums(
                  # Fallback
                  categorized_tags["other"].append(tag.name)
         
+        # Fetch a cover image (e.g., first image)
+        cover_image = await Image.filter(album=album, media_type=MediaType.PICTURE).first()
+        cover_image_dto = None
+        if cover_image:
+             cover_image_dto = ImageOut(
+                id=cover_image.id,
+                filename=cover_image.filename,
+                width=cover_image.width,
+                height=cover_image.height,
+                blurhash=cover_image.blurhash,
+                media_type=cover_image.media_type,
+                url=f"/static/files/{album.path}/{cover_image.filename}",
+                thumbnail_url=f"/static/cache/thumbnails/{cover_image.file_hash}.jpg"
+            )
+
         album_dto = AlbumOut(
             **base_dto.model_dump(),
-            tags=categorized_tags
+            tags=categorized_tags,
+            cover_image=cover_image_dto
         )
         results.append(album_dto)
 
