@@ -113,3 +113,172 @@ export function formatSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)}GB`;
 }
+
+export interface CoserCreate {
+  name: string;
+  avatar_path?: string | null;
+}
+
+export interface ParodyCreate {
+  name: string;
+}
+
+export interface CosplayCreate {
+  title: string;
+  coser_id: number;
+  parody_id?: number | null;
+  dir_path: string;
+}
+
+export interface CosplayUpdate {
+  title?: string | null;
+  coser_id?: number | null;
+  parody_id?: number | null;
+}
+
+export async function adminCreateCoser(data: CoserCreate): Promise<Coser> {
+  const res = await fetch(`${API_BASE}/admin/cosers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create coser");
+  }
+  return res.json();
+}
+
+export async function adminUpdateCoser(
+  coserId: number,
+  data: CoserCreate
+): Promise<Coser> {
+  const res = await fetch(`${API_BASE}/admin/cosers/${coserId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update coser");
+  }
+  return res.json();
+}
+
+export async function adminDeleteCoser(coserId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/cosers/${coserId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete coser");
+  }
+}
+
+export async function adminCreateParody(data: ParodyCreate): Promise<Parody> {
+  const res = await fetch(`${API_BASE}/admin/parodies`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create parody");
+  }
+  return res.json();
+}
+
+export async function adminUpdateParody(
+  parodyId: number,
+  data: ParodyCreate
+): Promise<Parody> {
+  const res = await fetch(`${API_BASE}/admin/parodies/${parodyId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update parody");
+  }
+  return res.json();
+}
+
+export async function adminDeleteParody(parodyId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/parodies/${parodyId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete parody");
+  }
+}
+
+export async function adminCreateCosplay(
+  data: CosplayCreate
+): Promise<CosplayItem> {
+  const res = await fetch(`${API_BASE}/admin/cosplays`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to create cosplay");
+  }
+  return res.json();
+}
+
+export async function adminUpdateCosplay(
+  cosplayId: number,
+  data: CosplayUpdate
+): Promise<CosplayItem> {
+  const res = await fetch(`${API_BASE}/admin/cosplays/${cosplayId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update cosplay");
+  }
+  return res.json();
+}
+
+export async function adminDeleteCosplay(cosplayId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/cosplays/${cosplayId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to delete cosplay");
+  }
+}
+
+export async function adminRescanCosplay(
+  cosplayId: number
+): Promise<{ photo_count: number; video_count: number }> {
+  const res = await fetch(`${API_BASE}/admin/cosplays/${cosplayId}/rescan`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to rescan cosplay");
+  }
+  return res.json();
+}
+
+export async function adminGenerateThumbnails(cosplayId: number): Promise<{
+  thumbnails_generated: number;
+  hashes_computed: number;
+}> {
+  const res = await fetch(
+    `${API_BASE}/admin/cosplays/${cosplayId}/generate-thumbnails`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to generate thumbnails");
+  }
+  return res.json();
+}
