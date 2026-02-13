@@ -1,7 +1,9 @@
 import re
 from pathlib import Path
 
+import blurhash
 import imagehash
+import numpy as np
 import pillow_avif  # noqa: F401 — 注册 AVIF codec
 from PIL import Image
 from sqlalchemy.orm import Session
@@ -74,8 +76,19 @@ def compute_phashes_for_cosplay(cosplay: Cosplay, db: Session) -> int:
 
         try:
             with Image.open(f) as img:
+                img_rgb = img.convert("RGB")
+                img_rgb.thumbnail((100, 100))
+                arr = np.array(img_rgb)
                 phash = str(imagehash.phash(img))
-                db.add(ImageHash(cosplay_id=cosplay.id, filename=f.name, phash=phash))
+                blurhash_str = blurhash.encode(arr, components_x=4, components_y=3)
+                db.add(
+                    ImageHash(
+                        cosplay_id=cosplay.id,
+                        filename=f.name,
+                        phash=phash,
+                        blurhash=blurhash_str,
+                    )
+                )
                 count += 1
         except Exception:
             continue

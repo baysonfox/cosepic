@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from ..database import get_db
-from ..models import Cosplay, Coser, Parody
+from ..models import Cosplay, ImageHash, Coser, Parody
 from ..schemas import CoserOut, CosplayOut, PaginatedResponse, ParodyOut
 
 router = APIRouter()
@@ -112,7 +112,15 @@ def get_cosplay(cosplay_id: int, db: Session = Depends(get_db)):
     return CosplayOut.model_validate(cosplay)
 
 
-@router.get("/{cosplay_id}/images", response_model=list[str])
+from pydantic import BaseModel
+
+
+class ImageWithBlurhash(BaseModel):
+    filename: str
+    blurhash: str | None
+
+
+@router.get("/{cosplay_id}/images", response_model=list[ImageWithBlurhash])
 def list_cosplay_images(cosplay_id: int, db: Session = Depends(get_db)):
     cosplay = db.query(Cosplay).filter(Cosplay.id == cosplay_id).first()
     if not cosplay:
@@ -122,10 +130,19 @@ def list_cosplay_images(cosplay_id: int, db: Session = Depends(get_db)):
     if not dir_path.is_dir():
         return []
 
+    blurhash_map = {
+        row.filename: row.blurhash
+        for row in db.query(ImageHash.filename, ImageHash.blurhash)
+        .filter(ImageHash.cosplay_id == cosplay_id)
+        .all()
+    }
+
     files = []
     for f in dir_path.iterdir():
         if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS:
-            files.append(f.name)
+            files.append(
+                ImageWithBlurhash(filename=f.name, blurhash=blurhash_map.get(f.name))
+            )
 
-    files.sort(key=_natural_sort_key)
+    files.sort(key=lambda x: _natural_sort_key(x.filename))
     return files
