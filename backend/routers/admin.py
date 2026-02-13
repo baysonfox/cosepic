@@ -150,6 +150,15 @@ def create_cosplay(data: CosplayCreate, db: Session = Depends(get_db)):
     db.add(cosplay)
     db.commit()
     db.refresh(cosplay)
+
+    from ..services.thumbnail import (
+        generate_thumbnails_for_cosplay,
+        compute_phashes_for_cosplay,
+    )
+
+    generate_thumbnails_for_cosplay(cosplay)
+    compute_phashes_for_cosplay(cosplay, db)
+
     return CosplayOut.model_validate(cosplay)
 
 
