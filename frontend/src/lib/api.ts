@@ -59,7 +59,14 @@ export async function fetchCosplay(id: number): Promise<CosplayItem> {
   return res.json();
 }
 
-export async function fetchCosplayImages(id: number): Promise<string[]> {
+export interface ImageWithBlurhash {
+  filename: string;
+  blurhash: string | null;
+}
+
+export async function fetchCosplayImages(
+  id: number
+): Promise<ImageWithBlurhash[]> {
   const res = await fetch(`${API_BASE}/cosplays/${id}/images`);
   return res.json();
 }

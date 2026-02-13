@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import LazyImage from "@/components/LazyImage";
 import {
   fetchCosplay,
   fetchCosplayImages,
@@ -9,6 +10,7 @@ import {
   imageUrl,
   formatSize,
   type CosplayItem,
+  type ImageWithBlurhash,
 } from "@/lib/api";
 
 export default function CosplayDetailPage({
@@ -18,7 +20,7 @@ export default function CosplayDetailPage({
 }) {
   const [params, setParams] = useState<{ id: string } | null>(null);
   const [cosplay, setCosplay] = useState<CosplayItem | null>(null);
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<ImageWithBlurhash[]>([]);
   const [visibleCount, setVisibleCount] = useState(20);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
@@ -51,6 +53,7 @@ export default function CosplayDetailPage({
   }
 
   const cosplayId = parseInt(params.id);
+  const currentImage = lightboxIdx !== null ? images[lightboxIdx] : null;
 
   return (
     <div>
@@ -102,18 +105,17 @@ export default function CosplayDetailPage({
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {images.slice(0, visibleCount).map((filename, idx) => (
+        {images.slice(0, visibleCount).map((img, idx) => (
           <button
-            key={filename}
+            key={img.filename}
             onClick={() => setLightboxIdx(idx)}
             className="relative aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded bg-[var(--card-bg)]"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={thumbnailUrl(cosplayId, filename)}
-              alt={filename}
-              className="h-full w-full object-cover"
-              loading="lazy"
+            <LazyImage
+              blurhash={img.blurhash}
+              thumbnailSrc={thumbnailUrl(cosplayId, img.filename)}
+              alt={img.filename}
+              className="h-full w-full"
             />
           </button>
         ))}
@@ -130,7 +132,7 @@ export default function CosplayDetailPage({
         </div>
       )}
 
-      {lightboxIdx !== null && (
+      {lightboxIdx !== null && currentImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
           onClick={() => setLightboxIdx(null)}
@@ -163,10 +165,9 @@ export default function CosplayDetailPage({
               ›
             </button>
           )}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={imageUrl(cosplayId, images[lightboxIdx])}
-            alt={images[lightboxIdx]}
+            src={imageUrl(cosplayId, currentImage.filename)}
+            alt={currentImage.filename}
             className="max-h-[90vh] max-w-[90vw] object-contain"
             onClick={(e) => e.stopPropagation()}
           />
