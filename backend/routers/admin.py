@@ -233,3 +233,94 @@ def delete_cosplay(cosplay_id: int, db: Session = Depends(get_db)):
     db.delete(cosplay)
     db.commit()
     return {"ok": True}
+
+
+def _hamming_distance(h1: str, h2: str) -> int:
+    """Calculate Hamming distance between two hex pHashes."""
+    if len(h1) != len(h2):
+        return 64
+    return sum(c1 != c2 for c1, c2 in zip(h1, h2))
+
+
+@router.get("/dedup/find")
+def find_duplicates(threshold: int = 10, db: Session = Depends(get_db)):
+    """Find potential duplicate images across cosplays based on pHash."""
+    from ..models import ImageHash, Cosplay
+
+    hashes = db.query(ImageHash).all()
+
+    # Group hashes by value
+    hash_map: dict[str, list[ImageHash]] = {}
+    for h in hashes:
+        if h.phash not in hash_map:
+            hash_map[h.phash] = []
+        hash_map[h.phash].append(h)
+
+    # Find exact duplicates (same pHash)
+    duplicates = []
+    for phash, items in hash_map.items():
+        if len(items) > 1:
+            # Get cosplay info for each
+            cosplay_ids = list(set([item.cosplay_id for item in items]))
+            if len(cosplay_ids) > 1:
+                cosplays = db.query(Cosplay).filter(Cosplay.id.in_(cosplay_ids)).all()
+                cosplay_map = {c.id: c for c in cosplays}
+                duplicates.append(
+                    {
+                        "type": "exact",
+                        "phash": phash,
+                        "images": [
+                            {
+                                "id": item.id,
+                                "cosplay_id": item.cosplay_id,
+                                "cosplay_title": cosplay_map[item.cosplay_id].title
+                                if item.cosplay_id in cosplay_map
+                                else None,
+                                "filename": item.filename,
+                            }
+                            for item in items
+                        ],
+                    }
+                )
+
+    # Find similar hashes (within threshold)
+    similar_pairs = []
+    hash_list = list(hash_map.keys())
+    for i, h1 in enumerate(hash_list):
+        for h2 in hash_list[i + 1 :]:
+            dist = _hamming_distance(h1, h2)
+            if dist <= threshold:
+                items1 = hash_map[h1]
+                items2 = hash_map[h2]
+                cosplay_ids = list(set([item.cosplay_id for item in items1 + items2]))
+                if len(cosplay_ids) > 1:
+                    cosplays = (
+                        db.query(Cosplay).filter(Cosplay.id.in_(cosplay_ids)).all()
+                    )
+                    cosplay_map = {c.id: c for c in cosplays}
+                    similar_pairs.append(
+                        {
+                            "type": "similar",
+                            "distance": dist,
+                            "phash1": h1,
+                            "phash2": h2,
+                            "images": [
+                                {
+                                    "id": item.id,
+                                    "cosplay_id": item.cosplay_id,
+                                    "cosplay_title": cosplay_map[item.cosplay_id].title
+                                    if item.cosplay_id in cosplay_map
+                                    else None,
+                                    "filename": item.filename,
+                                }
+                                for item in items1 + items2
+                            ],
+                        }
+                    )
+
+    return {
+        "exact_duplicates": duplicates[:20],
+        "similar_pairs": similar_pairs[:20],
+        "exact_count": len(duplicates),
+        "similar_count": len(similar_pairs),
+    }
