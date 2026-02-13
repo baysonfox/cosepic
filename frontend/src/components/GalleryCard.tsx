@@ -32,14 +32,14 @@ export default function GalleryCard({ item }: { item: CosplayItem }) {
         </div>
       </div>
       <div className="p-3">
-        <h3 className="truncate text-sm font-medium text-white">{item.title}</h3>
+        <h3 className="text-sm font-medium text-white">{item.title}</h3>
         {item.parody && (
-          <p className="mt-0.5 truncate text-xs text-gray-400">
+          <p className="mt-0.5 text-xs text-gray-400">
             {item.parody.name}
           </p>
         )}
         {item.coser && (
-          <p className="mt-1 truncate text-sm text-white font-medium">
+          <p className="mt-1 text-sm text-white font-medium">
             {item.coser.name}
           </p>
         )}
