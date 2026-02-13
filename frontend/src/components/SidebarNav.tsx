@@ -9,6 +9,7 @@ import {
   BookOpen,
   Layers,
   User,
+  Scan,
 } from "lucide-react";
 import {
   Sidebar,
@@ -63,6 +64,19 @@ const albumItems = [
   },
 ];
 
+const adminItems = [
+  {
+    title: "管理",
+    url: "/admin",
+    icon: Scan,
+  },
+  {
+    title: "去重",
+    url: "/admin/dedup",
+    icon: Scan,
+  },
+];
+
 export function SidebarNav() {
   const pathname = usePathname();
 
@@ -104,6 +118,26 @@ export function SidebarNav() {
           <SidebarGroupContent>
             <SidebarMenu>
               {cosplayItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
+                    <Link href={item.url} className="flex items-center gap-3">
+                      <item.icon className="h-5 w-5" />
+                      <span>{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            管理
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {adminItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <Link href={item.url} className="flex items-center gap-3">
