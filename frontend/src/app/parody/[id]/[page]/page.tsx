@@ -3,7 +3,7 @@ import Pagination from "@/components/Pagination";
 import { type CosplayItem, type Parody, type PaginatedResponse } from "@/lib/api";
 
 async function getParody(id: number): Promise<Parody> {
-  const res = await fetch(`http://127.0.0.1:8000/api/parodies/${id}`, {
+  const res = await fetch(`http://127.0.0.1:7900/api/parodies/${id}`, {
     cache: "no-store",
   });
   return res.json();
@@ -14,7 +14,7 @@ async function getParodyCosplays(
   page: number
 ): Promise<PaginatedResponse<CosplayItem>> {
   const res = await fetch(
-    `http://127.0.0.1:8000/api/cosplays/?parody_id=${parodyId}&page=${page}&page_size=20`,
+    `http://127.0.0.1:7900/api/cosplays/?parody_id=${parodyId}&page=${page}&page_size=20`,
     { cache: "no-store" }
   );
   return res.json();

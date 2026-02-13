@@ -13,7 +13,7 @@ async function getCosers(
     page_size: "20",
   });
   if (search) params.set("search", search);
-  const res = await fetch(`http://127.0.0.1:8000/api/cosers/?${params}`, {
+  const res = await fetch(`http://127.0.0.1:7900/api/cosers/?${params}`, {
     cache: "no-store",
   });
   return res.json();

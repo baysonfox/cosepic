@@ -3,7 +3,7 @@ import { type Parody, type PaginatedResponse } from "@/lib/api";
 
 async function getParodies(): Promise<PaginatedResponse<Parody>> {
   const res = await fetch(
-    "http://127.0.0.1:8000/api/parodies/?page=1&page_size=500",
+    "http://127.0.0.1:7900/api/parodies/?page=1&page_size=500",
     { cache: "no-store" }
   );
   return res.json();

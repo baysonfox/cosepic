@@ -3,7 +3,7 @@ import Pagination from "@/components/Pagination";
 import { type CosplayItem, type Coser, type PaginatedResponse } from "@/lib/api";
 
 async function getCoser(id: number): Promise<Coser> {
-  const res = await fetch(`http://127.0.0.1:8000/api/cosers/${id}`, {
+  const res = await fetch(`http://127.0.0.1:7900/api/cosers/${id}`, {
     cache: "no-store",
   });
   return res.json();
@@ -14,7 +14,7 @@ async function getCoserCosplays(
   page: number
 ): Promise<PaginatedResponse<CosplayItem>> {
   const res = await fetch(
-    `http://127.0.0.1:8000/api/cosplays/?coser_id=${coserId}&page=${page}&page_size=20`,
+    `http://127.0.0.1:7900/api/cosplays/?coser_id=${coserId}&page=${page}&page_size=20`,
     { cache: "no-store" }
   );
   return res.json();

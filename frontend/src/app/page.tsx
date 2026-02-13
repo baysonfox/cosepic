@@ -4,7 +4,7 @@ import { type CosplayItem, type PaginatedResponse } from "@/lib/api";
 
 async function getLatestCosplays(): Promise<PaginatedResponse<CosplayItem>> {
   const res = await fetch(
-    "http://127.0.0.1:8000/api/cosplays/?page=1&page_size=20",
+    "http://127.0.0.1:7900/api/cosplays/?page=1&page_size=20",
     { cache: "no-store" }
   );
   return res.json();
