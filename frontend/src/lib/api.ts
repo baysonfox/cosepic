@@ -282,3 +282,39 @@ export async function adminGenerateThumbnails(cosplayId: number): Promise<{
   }
   return res.json();
 }
+
+export interface DedupImage {
+  id: number;
+  cosplay_id: number;
+  cosplay_title: string | null;
+  filename: string;
+}
+
+export interface DedupResult {
+  type: string;
+  phash?: string;
+  distance?: number;
+  phash1?: string;
+  phash2?: string;
+  images: DedupImage[];
+}
+
+export interface DedupResponse {
+  exact_duplicates: DedupResult[];
+  similar_pairs: DedupResult[];
+  exact_count: number;
+  similar_count: number;
+}
+
+export async function findDuplicates(
+  threshold: number = 10
+): Promise<DedupResponse> {
+  const res = await fetch(
+    `${API_BASE}/admin/dedup/find?threshold=${threshold}`
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to find duplicates");
+  }
+  return res.json();
+}
