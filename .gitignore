@@ -33,9 +33,6 @@ Thumbs.db
 .env
 .env.local
 
-# Screenshots
-homepage.png
-
 # Agent configs
 .agent/
 .agents/
