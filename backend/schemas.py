@@ -43,14 +43,45 @@ class CosplayBase(BaseModel):
     dir_path: str
 
 
-class CosplayCreate(CosplayBase):
-    pass
+class CosplayCreate(BaseModel):
+    dir_path: str
+    title: str | None = None
+    coser_id: int | None = None
+    parody_id: int | None = None
+
+
+class ScrapedCosplayCandidate(BaseModel):
+    dir_path: str
+    folder_name: str
+    title: str
+    coser_name: str
+    parody_name: str | None = None
+    coser_id: int | None = None
+    parody_id: int | None = None
+    photo_count: int = 0
+    video_count: int = 0
+    total_size: int = 0
+    cover_path: str | None = None
+
+
+class ScrapePreviewRequest(BaseModel):
+    root_dir: str
+
+
+class ScrapePreviewResponse(BaseModel):
+    root_dir: str
+    items: list[ScrapedCosplayCandidate]
+
+
+class BatchCreateCosplaysRequest(BaseModel):
+    items: list[CosplayCreate]
 
 
 class CosplayUpdate(BaseModel):
     title: str | None = None
     coser_id: int | None = None
     parody_id: int | None = None
+    dir_path: str | None = None
 
 
 class CosplayOut(CosplayBase):
@@ -64,6 +95,10 @@ class CosplayOut(CosplayBase):
     parody: ParodyOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+class BatchCreateCosplaysResponse(BaseModel):
+    created: list[CosplayOut]
 
 
 class PaginatedResponse(BaseModel):

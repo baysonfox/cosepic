@@ -72,7 +72,6 @@ class ImageHash(Base):
         Integer, ForeignKey("cosplays.id", ondelete="CASCADE"), nullable=False
     )
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
-    phash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     blurhash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     cosplay: Mapped["Cosplay"] = relationship(back_populates="image_hashes")

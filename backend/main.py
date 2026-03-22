@@ -1,10 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .database import Base, engine
+from .database import Base, engine, run_migrations
 from .routers import admin, cosers, cosplays, files, parodies
 
 Base.metadata.create_all(bind=engine)
+run_migrations()
 
 app = FastAPI(title="Cosepic", version="0.1.0")
 
