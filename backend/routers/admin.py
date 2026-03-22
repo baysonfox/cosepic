@@ -1,11 +1,16 @@
 from pathlib import Path
+import re
+import shutil
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Coser, Cosplay, ImageHash, Parody
+from ..services.cosplay_dir import parse_cosplay_dir_name
 from ..schemas import (
+    BatchCreateCosplaysRequest,
+    BatchCreateCosplaysResponse,
     CoserCreate,
     CoserOut,
     CosplayCreate,
@@ -13,6 +18,9 @@ from ..schemas import (
     CosplayUpdate,
     ParodyCreate,
     ParodyOut,
+    ScrapePreviewRequest,
+    ScrapePreviewResponse,
+    ScrapedCosplayCandidate,
 )
 
 router = APIRouter()
@@ -45,6 +53,64 @@ def _scan_dir_stats(dir_path: str) -> tuple[int, int, int, str | None]:
             total_size += f.stat().st_size
 
     return photo_count, video_count, total_size, first_image
+
+
+def _parse_cosplay_dir_name(dir_path: str) -> tuple[str, str | None, str]:
+    try:
+        return parse_cosplay_dir_name(dir_path)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=("目录名格式不正确，应为：Coser - 作品 - 角色 [变体] XXp [XXv]"),
+        )
+
+
+def _get_or_create_coser(db: Session, name: str) -> Coser:
+    coser = db.query(Coser).filter(Coser.name == name).first()
+    if coser is not None:
+        return coser
+
+    coser = Coser(name=name)
+    db.add(coser)
+    db.flush()
+    return coser
+
+
+def _get_or_create_parody(db: Session, name: str | None) -> Parody | None:
+    if name is None:
+        return None
+
+    parody = db.query(Parody).filter(Parody.name == name).first()
+    if parody is not None:
+        return parody
+
+    parody = Parody(name=name)
+    db.add(parody)
+    db.flush()
+    return parody
+
+
+def _build_scraped_candidate(dir_path: str, db: Session) -> ScrapedCosplayCandidate:
+    coser_name, parody_name, title = _parse_cosplay_dir_name(dir_path)
+    photo_count, video_count, total_size, first_image = _scan_dir_stats(dir_path)
+    coser = db.query(Coser).filter(Coser.name == coser_name).first()
+    parody = None
+    if parody_name is not None:
+        parody = db.query(Parody).filter(Parody.name == parody_name).first()
+
+    return ScrapedCosplayCandidate(
+        dir_path=dir_path,
+        folder_name=Path(dir_path).name,
+        title=title,
+        coser_name=coser_name,
+        parody_name=parody_name,
+        coser_id=coser.id if coser is not None else None,
+        parody_id=parody.id if parody is not None else None,
+        photo_count=photo_count,
+        video_count=video_count,
+        total_size=total_size,
+        cover_path=first_image,
+    )
 
 
 @router.post("/cosers", response_model=CoserOut)
@@ -127,20 +193,34 @@ def delete_parody(parody_id: int, db: Session = Depends(get_db)):
 
 @router.post("/cosplays", response_model=CosplayOut)
 def create_cosplay(data: CosplayCreate, db: Session = Depends(get_db)):
-    coser = db.query(Coser).filter(Coser.id == data.coser_id).first()
-    if not coser:
-        raise HTTPException(status_code=404, detail="Coser not found")
+    parsed_coser_name, parsed_parody_name, parsed_title = _parse_cosplay_dir_name(
+        data.dir_path
+    )
+
+    if data.coser_id is not None:
+        coser = db.query(Coser).filter(Coser.id == data.coser_id).first()
+        if not coser:
+            raise HTTPException(status_code=404, detail="Coser not found")
+    else:
+        coser = _get_or_create_coser(db, parsed_coser_name)
+
     if data.parody_id is not None:
         parody = db.query(Parody).filter(Parody.id == data.parody_id).first()
         if not parody:
             raise HTTPException(status_code=404, detail="Parody not found")
+    else:
+        parody = _get_or_create_parody(db, parsed_parody_name)
+
+    title = (data.title or parsed_title).strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="标题不能为空")
 
     photo_count, video_count, total_size, first_image = _scan_dir_stats(data.dir_path)
 
     cosplay = Cosplay(
-        title=data.title,
-        coser_id=data.coser_id,
-        parody_id=data.parody_id,
+        title=title,
+        coser_id=coser.id,
+        parody_id=parody.id if parody is not None else None,
         dir_path=data.dir_path,
         photo_count=photo_count,
         video_count=video_count,
@@ -153,13 +233,48 @@ def create_cosplay(data: CosplayCreate, db: Session = Depends(get_db)):
 
     from ..services.thumbnail import (
         generate_thumbnails_for_cosplay,
-        compute_phashes_for_cosplay,
+        compute_blurhashes_for_cosplay,
     )
 
     generate_thumbnails_for_cosplay(cosplay)
-    compute_phashes_for_cosplay(cosplay, db)
+    compute_blurhashes_for_cosplay(cosplay, db)
 
     return CosplayOut.model_validate(cosplay)
+
+
+@router.post("/cosplays/scrape-preview", response_model=ScrapePreviewResponse)
+def scrape_cosplay_preview(data: ScrapePreviewRequest, db: Session = Depends(get_db)):
+    root_dir = Path(data.root_dir)
+    if not root_dir.is_dir():
+        raise HTTPException(status_code=400, detail="根目录不存在")
+
+    items: list[ScrapedCosplayCandidate] = []
+    for path in sorted(root_dir.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_dir():
+            continue
+
+        try:
+            candidate = _build_scraped_candidate(str(path), db)
+        except HTTPException:
+            continue
+
+        if candidate.photo_count == 0 and candidate.video_count == 0:
+            continue
+
+        items.append(candidate)
+
+    return ScrapePreviewResponse(root_dir=str(root_dir), items=items)
+
+
+@router.post("/cosplays/batch-create", response_model=BatchCreateCosplaysResponse)
+def batch_create_cosplays(
+    data: BatchCreateCosplaysRequest, db: Session = Depends(get_db)
+):
+    created_items: list[CosplayOut] = []
+    for item in data.items:
+        created_items.append(create_cosplay(item, db))
+
+    return BatchCreateCosplaysResponse(created=created_items)
 
 
 @router.put("/cosplays/{cosplay_id}", response_model=CosplayOut)
@@ -167,6 +282,8 @@ def update_cosplay(cosplay_id: int, data: CosplayUpdate, db: Session = Depends(g
     cosplay = db.query(Cosplay).filter(Cosplay.id == cosplay_id).first()
     if not cosplay:
         raise HTTPException(status_code=404, detail="Cosplay not found")
+
+    dir_path_changed = False
 
     if data.title is not None:
         cosplay.title = data.title
@@ -181,8 +298,31 @@ def update_cosplay(cosplay_id: int, data: CosplayUpdate, db: Session = Depends(g
             raise HTTPException(status_code=404, detail="Parody not found")
         cosplay.parody_id = data.parody_id
 
+    if data.dir_path is not None and data.dir_path != cosplay.dir_path:
+        cosplay.dir_path = data.dir_path
+        dir_path_changed = True
+
+    if dir_path_changed:
+        photo_count, video_count, total_size, first_image = _scan_dir_stats(
+            cosplay.dir_path
+        )
+        cosplay.photo_count = photo_count
+        cosplay.video_count = video_count
+        cosplay.total_size = total_size
+        cosplay.cover_path = first_image
+
     db.commit()
     db.refresh(cosplay)
+
+    if dir_path_changed:
+        from ..services.thumbnail import (
+            compute_blurhashes_for_cosplay,
+            generate_thumbnails_for_cosplay,
+        )
+
+        generate_thumbnails_for_cosplay(cosplay)
+        compute_blurhashes_for_cosplay(cosplay, db)
+
     return CosplayOut.model_validate(cosplay)
 
 
@@ -200,6 +340,10 @@ def rescan_cosplay(cosplay_id: int, db: Session = Depends(get_db)):
     cosplay.total_size = total_size
     if first_image:
         cosplay.cover_path = first_image
+
+    from ..services.thumbnail import generate_thumbnails_for_cosplay
+
+    generate_thumbnails_for_cosplay(cosplay)
     db.commit()
     return {"ok": True, "photo_count": photo_count, "video_count": video_count}
 
@@ -211,12 +355,12 @@ def generate_thumbnails(cosplay_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Cosplay not found")
 
     from ..services.thumbnail import (
-        compute_phashes_for_cosplay,
+        compute_blurhashes_for_cosplay,
         generate_thumbnails_for_cosplay,
     )
 
     thumb_count = generate_thumbnails_for_cosplay(cosplay)
-    hash_count = compute_phashes_for_cosplay(cosplay, db)
+    hash_count = compute_blurhashes_for_cosplay(cosplay, db)
     return {
         "ok": True,
         "thumbnails_generated": thumb_count,
@@ -229,98 +373,14 @@ def delete_cosplay(cosplay_id: int, db: Session = Depends(get_db)):
     cosplay = db.query(Cosplay).filter(Cosplay.id == cosplay_id).first()
     if not cosplay:
         raise HTTPException(status_code=404, detail="Cosplay not found")
+
+    thumbnail_dir = (
+        Path(__file__).resolve().parent.parent.parent / "data" / "thumbnails"
+    )
+    cosplay_thumbnail_dir = thumbnail_dir / str(cosplay_id)
+
     db.query(ImageHash).filter(ImageHash.cosplay_id == cosplay_id).delete()
     db.delete(cosplay)
     db.commit()
+    shutil.rmtree(cosplay_thumbnail_dir, ignore_errors=True)
     return {"ok": True}
-
-
-def _hamming_distance(h1: str, h2: str) -> int:
-    """Calculate Hamming distance between two hex pHashes."""
-    if len(h1) != len(h2):
-        return 64
-    return sum(c1 != c2 for c1, c2 in zip(h1, h2))
-
-
-@router.get("/dedup/find")
-def find_duplicates(threshold: int = 10, db: Session = Depends(get_db)):
-    """Find potential duplicate images across cosplays based on pHash."""
-    from ..models import ImageHash, Cosplay
-
-    hashes = db.query(ImageHash).all()
-
-    # Group hashes by value
-    hash_map: dict[str, list[ImageHash]] = {}
-    for h in hashes:
-        if h.phash not in hash_map:
-            hash_map[h.phash] = []
-        hash_map[h.phash].append(h)
-
-    # Find exact duplicates (same pHash)
-    duplicates = []
-    for phash, items in hash_map.items():
-        if len(items) > 1:
-            # Get cosplay info for each
-            cosplay_ids = list(set([item.cosplay_id for item in items]))
-            if len(cosplay_ids) > 1:
-                cosplays = db.query(Cosplay).filter(Cosplay.id.in_(cosplay_ids)).all()
-                cosplay_map = {c.id: c for c in cosplays}
-                duplicates.append(
-                    {
-                        "type": "exact",
-                        "phash": phash,
-                        "images": [
-                            {
-                                "id": item.id,
-                                "cosplay_id": item.cosplay_id,
-                                "cosplay_title": cosplay_map[item.cosplay_id].title
-                                if item.cosplay_id in cosplay_map
-                                else None,
-                                "filename": item.filename,
-                            }
-                            for item in items
-                        ],
-                    }
-                )
-
-    # Find similar hashes (within threshold)
-    similar_pairs = []
-    hash_list = list(hash_map.keys())
-    for i, h1 in enumerate(hash_list):
-        for h2 in hash_list[i + 1 :]:
-            dist = _hamming_distance(h1, h2)
-            if dist <= threshold:
-                items1 = hash_map[h1]
-                items2 = hash_map[h2]
-                cosplay_ids = list(set([item.cosplay_id for item in items1 + items2]))
-                if len(cosplay_ids) > 1:
-                    cosplays = (
-                        db.query(Cosplay).filter(Cosplay.id.in_(cosplay_ids)).all()
-                    )
-                    cosplay_map = {c.id: c for c in cosplays}
-                    similar_pairs.append(
-                        {
-                            "type": "similar",
-                            "distance": dist,
-                            "phash1": h1,
-                            "phash2": h2,
-                            "images": [
-                                {
-                                    "id": item.id,
-                                    "cosplay_id": item.cosplay_id,
-                                    "cosplay_title": cosplay_map[item.cosplay_id].title
-                                    if item.cosplay_id in cosplay_map
-                                    else None,
-                                    "filename": item.filename,
-                                }
-                                for item in items1 + items2
-                            ],
-                        }
-                    )
-
-    return {
-        "exact_duplicates": duplicates[:20],
-        "similar_pairs": similar_pairs[:20],
-        "exact_count": len(duplicates),
-        "similar_count": len(similar_pairs),
-    }
