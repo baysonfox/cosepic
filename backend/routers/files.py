@@ -7,11 +7,12 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Cosplay
+from ..services.cosplay_dir import resolve_cosplay_dir_path
+from ..services.thumbnail import ensure_thumbnail_for_file
 
 router = APIRouter()
 
 IMAGE_EXTENSIONS = {".avif", ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
-THUMBNAIL_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "thumbnails"
 
 
 def _natural_sort_key(s: str) -> list:
@@ -26,7 +27,11 @@ def serve_image(cosplay_id: int, filename: str, db: Session = Depends(get_db)):
     if not cosplay:
         raise HTTPException(status_code=404, detail="Cosplay not found")
 
-    file_path = Path(cosplay.dir_path) / filename
+    dir_path = resolve_cosplay_dir_path(cosplay, db)
+    if dir_path is None:
+        raise HTTPException(status_code=404, detail="Cosplay directory not found")
+
+    file_path = dir_path / filename
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -39,11 +44,15 @@ def serve_thumbnail(cosplay_id: int, filename: str, db: Session = Depends(get_db
     if not cosplay:
         raise HTTPException(status_code=404, detail="Cosplay not found")
 
-    thumb_path = THUMBNAIL_DIR / str(cosplay_id) / filename
-    if thumb_path.is_file():
+    thumb_path = ensure_thumbnail_for_file(cosplay, filename)
+    if thumb_path is not None:
         return FileResponse(thumb_path, media_type=_media_type(thumb_path))
 
-    file_path = Path(cosplay.dir_path) / filename
+    dir_path = resolve_cosplay_dir_path(cosplay, db)
+    if dir_path is None:
+        raise HTTPException(status_code=404, detail="Cosplay directory not found")
+
+    file_path = dir_path / filename
     if not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(file_path, media_type=_media_type(file_path))
@@ -56,15 +65,19 @@ def serve_cover(cosplay_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Cosplay not found")
 
     if cosplay.cover_path:
-        thumb_path = THUMBNAIL_DIR / str(cosplay_id) / cosplay.cover_path
-        if thumb_path.is_file():
+        thumb_path = ensure_thumbnail_for_file(cosplay, cosplay.cover_path)
+        if thumb_path is not None:
             return FileResponse(thumb_path, media_type=_media_type(thumb_path))
 
-        file_path = Path(cosplay.dir_path) / cosplay.cover_path
+        dir_path = resolve_cosplay_dir_path(cosplay, db)
+        if dir_path is None:
+            raise HTTPException(status_code=404, detail="Cosplay directory not found")
+
+        file_path = dir_path / cosplay.cover_path
         if file_path.is_file():
             return FileResponse(file_path, media_type=_media_type(file_path))
 
-    dir_path = Path(cosplay.dir_path)
+    dir_path = resolve_cosplay_dir_path(cosplay, db)
     if dir_path.is_dir():
         images = sorted(
             [

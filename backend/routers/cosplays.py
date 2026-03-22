@@ -1,6 +1,5 @@
 import math
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..database import get_db
 from ..models import Cosplay, ImageHash, Coser, Parody
 from ..schemas import CoserOut, CosplayOut, PaginatedResponse, ParodyOut
+from ..services.cosplay_dir import resolve_cosplay_dir_path
 
 router = APIRouter()
 
@@ -126,8 +126,8 @@ def list_cosplay_images(cosplay_id: int, db: Session = Depends(get_db)):
     if not cosplay:
         raise HTTPException(status_code=404, detail="Cosplay not found")
 
-    dir_path = Path(cosplay.dir_path)
-    if not dir_path.is_dir():
+    dir_path = resolve_cosplay_dir_path(cosplay, db)
+    if dir_path is None:
         return []
 
     blurhash_map = {
