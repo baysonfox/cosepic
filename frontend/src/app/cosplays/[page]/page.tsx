@@ -1,16 +1,6 @@
 import GalleryCard from "@/components/GalleryCard";
 import Pagination from "@/components/Pagination";
-import { type CosplayItem, type PaginatedResponse } from "@/lib/api";
-
-async function getCosplays(
-  page: number
-): Promise<PaginatedResponse<CosplayItem>> {
-  const res = await fetch(
-    `http://127.0.0.1:7900/api/cosplays/?page=${page}&page_size=20`,
-    { cache: "no-store" }
-  );
-  return res.json();
-}
+import { fetchCosplays } from "@/lib/api";
 
 export default async function CosplaysPage({
   params,
@@ -19,7 +9,7 @@ export default async function CosplaysPage({
 }) {
   const { page: pageStr } = await params;
   const page = Math.max(1, parseInt(pageStr) || 1);
-  const data = await getCosplays(page);
+  const data = await fetchCosplays(page, 20);
 
   return (
     <div>

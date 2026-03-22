@@ -1,16 +1,8 @@
 import Link from "next/link";
-import { type Parody, type PaginatedResponse } from "@/lib/api";
-
-async function getParodies(): Promise<PaginatedResponse<Parody>> {
-  const res = await fetch(
-    "http://127.0.0.1:7900/api/parodies/?page=1&page_size=500",
-    { cache: "no-store" }
-  );
-  return res.json();
-}
+import { fetchParodies } from "@/lib/api";
 
 export default async function ParodiesPage() {
-  const data = await getParodies();
+  const data = await fetchParodies(1, 500);
 
   return (
     <div>

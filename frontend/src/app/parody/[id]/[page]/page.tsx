@@ -1,24 +1,6 @@
 import GalleryCard from "@/components/GalleryCard";
 import Pagination from "@/components/Pagination";
-import { type CosplayItem, type Parody, type PaginatedResponse } from "@/lib/api";
-
-async function getParody(id: number): Promise<Parody> {
-  const res = await fetch(`http://127.0.0.1:7900/api/parodies/${id}`, {
-    cache: "no-store",
-  });
-  return res.json();
-}
-
-async function getParodyCosplays(
-  parodyId: number,
-  page: number
-): Promise<PaginatedResponse<CosplayItem>> {
-  const res = await fetch(
-    `http://127.0.0.1:7900/api/cosplays/?parody_id=${parodyId}&page=${page}&page_size=20`,
-    { cache: "no-store" }
-  );
-  return res.json();
-}
+import { fetchParody, fetchCosplays } from "@/lib/api";
 
 export default async function ParodyDetailPage({
   params,
@@ -29,8 +11,8 @@ export default async function ParodyDetailPage({
   const parodyId = parseInt(idStr);
   const page = Math.max(1, parseInt(pageStr) || 1);
   const [parody, data] = await Promise.all([
-    getParody(parodyId),
-    getParodyCosplays(parodyId, page),
+    fetchParody(parodyId),
+    fetchCosplays(page, 20, undefined, parodyId),
   ]);
 
   return (

@@ -1,23 +1,8 @@
 import Link from "next/link";
 import Pagination from "@/components/Pagination";
 import CoserAvatar from "@/components/CoserAvatar";
-import { type Coser, type PaginatedResponse } from "@/lib/api";
+import { fetchCosers } from "@/lib/api";
 import SearchBar from "@/components/SearchBar";
-
-async function getCosers(
-  page: number,
-  search?: string
-): Promise<PaginatedResponse<Coser>> {
-  const params = new URLSearchParams({
-    page: String(page),
-    page_size: "20",
-  });
-  if (search) params.set("search", search);
-  const res = await fetch(`http://127.0.0.1:7900/api/cosers/?${params}`, {
-    cache: "no-store",
-  });
-  return res.json();
-}
 
 export default async function CosersPage({
   params,
@@ -29,7 +14,7 @@ export default async function CosersPage({
   const { page: pageStr } = await params;
   const { search } = await searchParams;
   const page = Math.max(1, parseInt(pageStr) || 1);
-  const data = await getCosers(page, search);
+  const data = await fetchCosers(page, 20, search);
 
   return (
     <div>

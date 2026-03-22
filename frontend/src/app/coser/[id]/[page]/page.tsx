@@ -1,24 +1,6 @@
 import GalleryCard from "@/components/GalleryCard";
 import Pagination from "@/components/Pagination";
-import { type CosplayItem, type Coser, type PaginatedResponse } from "@/lib/api";
-
-async function getCoser(id: number): Promise<Coser> {
-  const res = await fetch(`http://127.0.0.1:7900/api/cosers/${id}`, {
-    cache: "no-store",
-  });
-  return res.json();
-}
-
-async function getCoserCosplays(
-  coserId: number,
-  page: number
-): Promise<PaginatedResponse<CosplayItem>> {
-  const res = await fetch(
-    `http://127.0.0.1:7900/api/cosplays/?coser_id=${coserId}&page=${page}&page_size=20`,
-    { cache: "no-store" }
-  );
-  return res.json();
-}
+import { fetchCoser, fetchCosplays } from "@/lib/api";
 
 export default async function CoserDetailPage({
   params,
@@ -29,8 +11,8 @@ export default async function CoserDetailPage({
   const coserId = parseInt(idStr);
   const page = Math.max(1, parseInt(pageStr) || 1);
   const [coser, data] = await Promise.all([
-    getCoser(coserId),
-    getCoserCosplays(coserId, page),
+    fetchCoser(coserId),
+    fetchCosplays(page, 20, coserId),
   ]);
 
   return (

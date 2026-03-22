@@ -1,13 +1,9 @@
 import GalleryCard from "@/components/GalleryCard";
 import Pagination from "@/components/Pagination";
-import { type CosplayItem, type PaginatedResponse } from "@/lib/api";
+import { fetchCosplays } from "@/lib/api";
 
-async function getLatestCosplays(): Promise<PaginatedResponse<CosplayItem>> {
-  const res = await fetch(
-    "http://127.0.0.1:7900/api/cosplays/?page=1&page_size=20",
-    { cache: "no-store" }
-  );
-  return res.json();
+async function getLatestCosplays() {
+  return fetchCosplays(1, 20);
 }
 
 export default async function HomePage() {
@@ -15,7 +11,6 @@ export default async function HomePage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-2xl font-bold">最新图集</h1>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {data.items.map((item) => (
           <GalleryCard key={item.id} item={item} />
