@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   Home,
   Images,
-  Users,
   BookOpen,
   Layers,
   User,
@@ -23,7 +22,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
 
 const navItems = [
   {
@@ -51,28 +49,10 @@ const cosplayItems = [
   },
 ];
 
-const albumItems = [
-  {
-    title: "图集",
-    url: "/cosplays/1",
-    icon: Images,
-  },
-  {
-    title: "Coser",
-    url: "/cosers/1",
-    icon: Users,
-  },
-];
-
 const adminItems = [
   {
     title: "管理",
     url: "/admin",
-    icon: Scan,
-  },
-  {
-    title: "去重",
-    url: "/admin/dedup",
     icon: Scan,
   },
 ];
