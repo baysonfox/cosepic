@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { decode } from "blurhash";
 
 interface LazyImageProps {
@@ -15,19 +15,14 @@ interface LazyImageProps {
 export default function LazyImage({
   blurhash,
   thumbnailSrc,
-  fullSrc,
   alt,
   className = "",
   onClick,
 }: LazyImageProps) {
   const [loaded, setLoaded] = useState(false);
-  const [blurDataUrl, setBlurDataUrl] = useState<string | null>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
-
-  useEffect(() => {
+  const blurDataUrl = useMemo(() => {
     if (!blurhash) {
-      setBlurDataUrl(null);
-      return;
+      return null;
     }
 
     try {
@@ -36,14 +31,17 @@ export default function LazyImage({
       canvas.width = 32;
       canvas.height = 32;
       const ctx = canvas.getContext("2d");
-      if (ctx) {
-        const imageData = ctx.createImageData(32, 32);
-        imageData.data.set(pixels);
-        ctx.putImageData(imageData, 0, 0);
-        setBlurDataUrl(canvas.toDataUrl());
+
+      if (!ctx) {
+        return null;
       }
+
+      const imageData = ctx.createImageData(32, 32);
+      imageData.data.set(pixels);
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toDataURL();
     } catch {
-      setBlurDataUrl(null);
+      return null;
     }
   }, [blurhash]);
 
@@ -61,7 +59,6 @@ export default function LazyImage({
         />
       )}
       <img
-        ref={imgRef}
         src={thumbnailSrc}
         alt={alt}
         className={`h-full w-full object-cover transition-opacity duration-300 ${

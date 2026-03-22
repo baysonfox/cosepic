@@ -49,7 +49,11 @@ export default function CosplayDetailPage({
   }, [lightboxIdx, images.length]);
 
   if (!cosplay || !params) {
-    return <div className="py-20 text-center text-[var(--muted)]">加载中...</div>;
+    return (
+      <div className="py-20 text-center text-[var(--muted-foreground)]">
+        加载中...
+      </div>
+    );
   }
 
   const cosplayId = parseInt(params.id);
@@ -57,7 +61,7 @@ export default function CosplayDetailPage({
 
   return (
     <div>
-      <nav className="mb-4 flex items-center gap-2 text-sm text-[var(--muted)]">
+      <nav className="mb-4 flex items-center gap-2 text-sm text-[var(--muted-foreground)]">
         <Link href="/" className="hover:text-[var(--foreground)]">
           首页
         </Link>
@@ -78,11 +82,11 @@ export default function CosplayDetailPage({
 
       <div className="mb-6">
         <h1 className="text-2xl font-bold">{cosplay.title}</h1>
-        <div className="mt-2 flex flex-wrap gap-3 text-sm text-[var(--muted)]">
+        <div className="mt-2 flex flex-wrap gap-3 text-sm text-[var(--muted-foreground)]">
           {cosplay.coser && (
             <Link
               href={`/coser/${cosplay.coser.id}/1`}
-              className="text-[var(--accent)] hover:underline"
+              className="text-[var(--foreground)] hover:text-cyan-300 hover:underline"
             >
               {cosplay.coser.name}
             </Link>
