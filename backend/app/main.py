@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import create_db_and_tables
-from app.routers import system
+from app.routers import cosers, system
 
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(system.router)
+    application.include_router(cosers.router)
 
     return application
 
