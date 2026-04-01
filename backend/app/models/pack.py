@@ -29,7 +29,10 @@ class Pack(SQLModel, table=True):
     last_scanned_at: datetime | None = Field(default=None)
 
     # Relationships
-    assets: list["Asset"] = Relationship(back_populates="pack")
+    assets: list["Asset"] = Relationship(
+        back_populates="pack",
+        sa_relationship_kwargs={"foreign_keys": "Asset.pack_id"},
+    )
     coser_links: list["PackCoser"] = Relationship(back_populates="pack")
     character_links: list["PackCharacter"] = Relationship(back_populates="pack")
     outfit_links: list["PackOutfit"] = Relationship(back_populates="pack")

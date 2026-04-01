@@ -25,7 +25,7 @@ class Character(SQLModel, table=True):
     )
 
     # Relationships
-    work: "Work | None" = Relationship(back_populates="characters")
+    work: "Work" = Relationship(back_populates="characters")
     outfits: list["Outfit"] = Relationship(back_populates="character")
     pack_links: list["PackCharacter"] = Relationship(back_populates="character")
 

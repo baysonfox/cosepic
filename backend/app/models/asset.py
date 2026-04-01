@@ -31,7 +31,10 @@ class Asset(SQLModel, table=True):
     )
 
     # Relationships
-    pack: "Pack" = Relationship(back_populates="assets")
+    pack: "Pack" = Relationship(
+        back_populates="assets",
+        sa_relationship_kwargs={"foreign_keys": "[Asset.pack_id]"},
+    )
 
 
 from app.models.pack import Pack  # noqa: E402, F401
