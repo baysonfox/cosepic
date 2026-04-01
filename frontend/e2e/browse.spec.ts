@@ -30,3 +30,23 @@ test("entity pages show seeded records", async ({ page }) => {
   await page.goto("/characters");
   await expect(page.getByText(/Amiya/)).toBeVisible();
 });
+
+test("pack detail edit mode saves title and description", async ({ page }) => {
+  await page.goto("/packs/1");
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Pack title").fill("Amiya Spring Pack");
+  await page.getByLabel("Pack description").fill("Updated from Playwright");
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Amiya Spring Pack" }),
+  ).toBeVisible();
+  await expect(page.getByText("Updated from Playwright")).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Amiya Spring Pack" }),
+  ).toBeVisible();
+  await expect(page.getByText("Updated from Playwright")).toBeVisible();
+});

@@ -34,6 +34,22 @@ async function handleResponse(res: Response): Promise<unknown> {
   return null;
 }
 
+function toClientPath(path: string): string {
+  if (path === "/api/v1") {
+    return "/api";
+  }
+  if (path.startsWith("/api/v1/")) {
+    return `/api/${path.slice("/api/v1/".length)}`;
+  }
+  if (path.startsWith("/api/")) {
+    return path;
+  }
+  if (path.startsWith("/")) {
+    return `/api${path}`;
+  }
+  return `/api/${path}`;
+}
+
 /**
  * Fetch for Server Components — hits backend directly.
  */
@@ -53,6 +69,6 @@ export async function clientFetch<T = unknown>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`/api${path}`, init);
+  const res = await fetch(toClientPath(path), init);
   return handleResponse(res) as Promise<T>;
 }

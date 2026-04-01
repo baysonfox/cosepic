@@ -74,10 +74,10 @@ export interface PackCreate {
 
 export interface PackUpdate {
   title?: string;
-  description?: string;
+  description?: string | null;
   dir_path?: string;
   status?: string;
-  cover_asset_id?: number;
+  cover_asset_id?: number | null;
   coser_ids?: number[];
   character_ids?: number[];
   outfit_ids?: number[];
