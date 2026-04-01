@@ -1,72 +1,56 @@
-import { NextRequest, NextResponse } from "next/server";
+/**
+ * API proxy: forwards client-side requests to the backend.
+ *
+ * Client Components call /api/... which maps here.  The catch-all
+ * [...path] captures everything after /api/ and forwards it to the
+ * backend at http://127.0.0.1:8000/api/v1/{path}.
+ */
 
-const BACKEND_API_BASE = "http://127.0.0.1:7900/api";
+import { type NextRequest, NextResponse } from "next/server";
 
-function buildTargetUrl(
-  pathSegments: string[],
-  searchParams: URLSearchParams
-): string {
-  const path = pathSegments.join("/");
-  const search = searchParams.toString();
+const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
-  if (!search) {
-    return `${BACKEND_API_BASE}/${path}`;
+async function proxy(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+): Promise<Response> {
+  const { path } = await params;
+  const target = `${BACKEND_URL}/api/v1/${path.join("/")}`;
+  const url = new URL(target);
+
+  // Forward query params
+  request.nextUrl.searchParams.forEach((value, key) => {
+    url.searchParams.append(key, value);
+  });
+
+  const headers = new Headers();
+  const ct = request.headers.get("content-type");
+  if (ct) headers.set("content-type", ct);
+
+  const init: RequestInit = {
+    method: request.method,
+    headers,
+  };
+
+  // Forward body for non-GET/HEAD
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    init.body = await request.arrayBuffer();
   }
 
-  return `${BACKEND_API_BASE}/${path}?${search}`;
-}
+  const backendRes = await fetch(url.toString(), init);
 
-async function proxyRequest(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> }
-): Promise<NextResponse> {
-  const { path } = await context.params;
-  const targetUrl = buildTargetUrl(path, request.nextUrl.searchParams);
-  const requestBody = ["GET", "HEAD"].includes(request.method)
-    ? undefined
-    : await request.text();
-  const upstreamResponse = await fetch(targetUrl, {
-    method: request.method,
-    headers: request.headers,
-    body: requestBody,
-    redirect: "follow",
-  });
-  const responseHeaders = new Headers(upstreamResponse.headers);
-
-  responseHeaders.delete("content-encoding");
-  responseHeaders.delete("content-length");
-  responseHeaders.delete("transfer-encoding");
-
-  return new NextResponse(upstreamResponse.body, {
-    status: upstreamResponse.status,
-    headers: responseHeaders,
+  // Stream the response back
+  return new NextResponse(backendRes.body, {
+    status: backendRes.status,
+    statusText: backendRes.statusText,
+    headers: {
+      "content-type": backendRes.headers.get("content-type") ?? "application/octet-stream",
+    },
   });
 }
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> }
-): Promise<NextResponse> {
-  return proxyRequest(request, context);
-}
-
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> }
-): Promise<NextResponse> {
-  return proxyRequest(request, context);
-}
-
-export async function PUT(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> }
-): Promise<NextResponse> {
-  return proxyRequest(request, context);
-}
-
-export async function DELETE(
-  request: NextRequest,
-  context: { params: Promise<{ path: string[] }> }
-): Promise<NextResponse> {
-  return proxyRequest(request, context);
-}
+export const GET = proxy;
+export const POST = proxy;
+export const PATCH = proxy;
+export const PUT = proxy;
+export const DELETE = proxy;

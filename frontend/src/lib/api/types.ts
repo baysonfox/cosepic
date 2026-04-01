@@ -1,113 +1,304 @@
 /**
- * API 类型定义
+ * TypeScript types matching backend Pydantic schemas.
  */
 
-/** Coser 信息 */
-export interface Coser {
-  id: number;
-  name: string;
-  avatar_path: string | null;
-  created_at: string;
-  cosplay_count: number;
-}
+// ---------------------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------------------
 
-/** Parody (作品) 信息 */
-export interface Parody {
-  id: number;
-  name: string;
-  created_at: string;
-  cosplay_count: number;
-}
-
-/** Cosplay 图集信息 */
-export interface CosplayItem {
-  id: number;
-  title: string;
-  coser_id: number;
-  parody_id: number | null;
-  dir_path: string;
-  cover_path: string | null;
-  photo_count: number;
-  video_count: number;
-  total_size: number;
-  created_at: string;
-  coser: Coser | null;
-  parody: Parody | null;
-}
-
-/** 分页响应 */
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;
   page: number;
   page_size: number;
-  total_pages: number;
 }
 
-/** 图片信息（含 BlurHash） */
-export interface ImageWithBlurhash {
-  filename: string;
+// ---------------------------------------------------------------------------
+// Pack
+// ---------------------------------------------------------------------------
+
+export interface CoserBrief {
+  id: number;
+  name: string;
+  is_primary: boolean;
+}
+
+export interface CharacterBrief {
+  id: number;
+  name: string;
+  work_name: string | null;
+  is_primary: boolean;
+}
+
+export interface OutfitBrief {
+  id: number;
+  name: string;
+  character_name: string | null;
+}
+
+export interface TagBrief {
+  id: number;
+  name: string;
+  tag_type: string;
+}
+
+export interface PackListItem {
+  id: number;
+  title: string;
+  status: string;
+  cover_asset_id: number | null;
+  photo_count: number;
+  video_count: number;
+  total_size_bytes: number;
+  created_at: string;
+  cosers: CoserBrief[];
+  characters: CharacterBrief[];
+}
+
+export interface PackOut extends PackListItem {
+  description: string | null;
+  dir_path: string;
+  original_folder_name: string;
+  updated_at: string;
+  last_scanned_at: string | null;
+  outfits: OutfitBrief[];
+  tags: TagBrief[];
+}
+
+export interface PackCreate {
+  title: string;
+  dir_path: string;
+  original_folder_name?: string;
+  description?: string;
+}
+
+export interface PackUpdate {
+  title?: string;
+  description?: string;
+  dir_path?: string;
+  status?: string;
+  cover_asset_id?: number;
+  coser_ids?: number[];
+  character_ids?: number[];
+  outfit_ids?: number[];
+  tag_ids?: number[];
+}
+
+// ---------------------------------------------------------------------------
+// Asset
+// ---------------------------------------------------------------------------
+
+export interface AssetOut {
+  id: number;
+  asset_type: string;
+  file_name: string;
+  relative_path: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
   blurhash: string | null;
+  thumbnail_status: string;
+  sort_index: number;
 }
 
-/** 创建 Coser 请求 */
+// ---------------------------------------------------------------------------
+// Coser
+// ---------------------------------------------------------------------------
+
+export interface CoserOut {
+  id: number;
+  name: string;
+  avatar_asset_id: number | null;
+  created_at: string;
+  updated_at: string;
+  pack_count: number;
+  aliases: string[];
+}
+
 export interface CoserCreate {
   name: string;
-  avatar_path?: string | null;
 }
 
-/** 创建 Parody 请求 */
-export interface ParodyCreate {
+export interface CoserUpdate {
+  name?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Work
+// ---------------------------------------------------------------------------
+
+export interface WorkOut {
+  id: number;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  character_count: number;
+  pack_count: number;
+}
+
+export interface WorkCreate {
   name: string;
 }
 
-/** 创建 Cosplay 请求 */
-export interface CosplayCreate {
-  title?: string;
-  coser_id?: number;
-  parody_id?: number | null;
-  dir_path: string;
+export interface WorkUpdate {
+  name?: string;
 }
 
-/** 更新 Cosplay 请求 */
-export interface CosplayUpdate {
-  title?: string | null;
-  coser_id?: number | null;
-  parody_id?: number | null;
-  dir_path?: string | null;
+// ---------------------------------------------------------------------------
+// Character
+// ---------------------------------------------------------------------------
+
+export interface CharacterOut {
+  id: number;
+  name: string;
+  work_id: number | null;
+  work_name: string | null;
+  created_at: string;
+  updated_at: string;
+  pack_count: number;
 }
 
-export interface ScrapedCosplayCandidate {
-  dir_path: string;
+export interface CharacterCreate {
+  name: string;
+  work_id?: number;
+}
+
+export interface CharacterUpdate {
+  name?: string;
+  work_id?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Outfit
+// ---------------------------------------------------------------------------
+
+export interface OutfitOut {
+  id: number;
+  name: string;
+  character_id: number;
+  character_name: string | null;
+  created_at: string;
+  updated_at: string;
+  pack_count: number;
+}
+
+export interface OutfitCreate {
+  name: string;
+  character_id: number;
+}
+
+export interface OutfitUpdate {
+  name?: string;
+  character_id?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Tag
+// ---------------------------------------------------------------------------
+
+export interface TagOut {
+  id: number;
+  name: string;
+  tag_type: string;
+  created_at: string;
+  pack_count: number;
+}
+
+export interface TagCreate {
+  name: string;
+  tag_type?: string;
+}
+
+export interface TagUpdate {
+  name?: string;
+  tag_type?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+
+export interface ImportCandidateOut {
+  id: number;
+  batch_id: number;
+  folder_path: string;
   folder_name: string;
-  title: string;
-  coser_name: string;
-  parody_name: string | null;
-  coser_id: number | null;
-  parody_id: number | null;
+  detected_title: string | null;
+  detected_coser_names: string[] | null;
+  detected_work_name: string | null;
+  detected_character_names: string[] | null;
   photo_count: number;
   video_count: number;
-  total_size: number;
-  cover_path: string | null;
+  total_size_bytes: number;
+  existing_pack_id: number | null;
+  status: string;
+  created_at: string;
 }
 
-export interface ScrapePreviewResponse {
-  root_dir: string;
-  items: ScrapedCosplayCandidate[];
+export interface ImportCandidateUpdate {
+  detected_title?: string;
+  detected_coser_names?: string[];
+  detected_work_name?: string;
+  detected_character_names?: string[];
+  status?: string;
 }
 
-export interface BatchCreateCosplaysResponse {
-  created: CosplayItem[];
+export interface ImportBatchOut {
+  id: number;
+  root_path: string;
+  status: string;
+  total_candidates: number;
+  imported_count: number;
+  created_at: string;
+  finished_at: string | null;
+  candidates: ImportCandidateOut[];
 }
 
-/** 缩略图生成响应 */
-export interface ThumbnailResponse {
-  thumbnails_generated: number;
-  hashes_computed: number;
+export interface ImportCommitResult {
+  imported_count: number;
+  pack_ids: number[];
 }
 
-/** 重新扫描响应 */
-export interface RescanResponse {
-  photo_count: number;
-  video_count: number;
+// ---------------------------------------------------------------------------
+// Task
+// ---------------------------------------------------------------------------
+
+export interface TaskOut {
+  id: number;
+  task_type: string;
+  target_type: string | null;
+  target_id: number | null;
+  status: string;
+  error_message: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// System
+// ---------------------------------------------------------------------------
+
+export interface SystemStats {
+  packs: number;
+  assets: number;
+  cosers: number;
+  works: number;
+  total_size_bytes: number;
+}
+
+// ---------------------------------------------------------------------------
+// Pack filter params
+// ---------------------------------------------------------------------------
+
+export interface PackFilterParams {
+  q?: string;
+  coser_ids?: number[];
+  work_ids?: number[];
+  character_ids?: number[];
+  outfit_ids?: number[];
+  tag_ids?: number[];
+  has_video?: boolean;
+  status?: string;
+  sort?: string;
+  order?: string;
+  page?: number;
+  page_size?: number;
 }

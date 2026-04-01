@@ -1,63 +1,58 @@
-function getApiBase(): string {
-  if (typeof window !== "undefined") {
-    return "/api";
-  }
+/**
+ * Base fetch wrappers for server and client components.
+ */
 
-  return process.env.NEXT_PUBLIC_APP_URL || "http://127.0.0.1:3000/api";
-}
+const BACKEND_URL = process.env.BACKEND_URL || "http://127.0.0.1:8000";
 
 export class ApiError extends Error {
   constructor(
-    message: string,
-    public readonly status: number
+    public status: number,
+    public detail: string,
   ) {
-    super(message);
+    super(`API ${status}: ${detail}`);
     this.name = "ApiError";
   }
 }
 
-interface ApiErrorResponse {
-  detail?: string;
-}
-
-export async function apiClient<T>(
-  path: string,
-  options?: RequestInit
-): Promise<T> {
-  const res = await fetch(`${getApiBase()}${path}`, options);
-
+async function handleResponse(res: Response): Promise<unknown> {
   if (!res.ok) {
-    const err = await res.json().catch((): ApiErrorResponse => ({}));
-    throw new ApiError(err.detail || "Request failed", res.status);
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? JSON.stringify(body);
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new ApiError(res.status, detail);
   }
+  if (res.status === 204) return null;
 
-  return res.json();
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json")) {
+    return res.json();
+  }
+  return null;
 }
 
-export async function apiPost<T, B = unknown>(
+/**
+ * Fetch for Server Components — hits backend directly.
+ */
+export async function serverFetch<T = unknown>(
   path: string,
-  body?: B
+  init?: RequestInit,
 ): Promise<T> {
-  return apiClient<T>(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const url = `${BACKEND_URL}${path}`;
+  const res = await fetch(url, { cache: "no-store", ...init });
+  return handleResponse(res) as Promise<T>;
 }
 
-export async function apiPut<T, B = unknown>(
+/**
+ * Fetch for Client Components — goes through Next.js API proxy.
+ */
+export async function clientFetch<T = unknown>(
   path: string,
-  body?: B
+  init?: RequestInit,
 ): Promise<T> {
-  return apiClient<T>(path, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const res = await fetch(`/api${path}`, init);
+  return handleResponse(res) as Promise<T>;
 }
-
-export async function apiDelete(path: string): Promise<void> {
-  await apiClient(path, { method: "DELETE" });
-}
-
-export { getApiBase };

@@ -1,31 +1,7 @@
-import GalleryCard from "@/components/GalleryCard";
-import Pagination from "@/components/Pagination";
-import { fetchCosplays } from "@/lib/api";
-
-async function getLatestCosplays() {
-  return fetchCosplays(1, 20);
-}
-
-export default async function HomePage() {
-  const data = await getLatestCosplays();
-
+export default function Home() {
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {data.items.map((item) => (
-          <GalleryCard key={item.id} item={item} />
-        ))}
-      </div>
-      {data.items.length === 0 && (
-        <p className="py-20 text-center text-[var(--muted)]">
-          还没有图集，去后台添加一些吧
-        </p>
-      )}
-      <Pagination
-        currentPage={1}
-        totalPages={data.total_pages}
-        buildHref={(page) => `/cosplays/${page}`}
-      />
-    </div>
+    <main className="flex items-center justify-center min-h-screen">
+      <h1 className="text-2xl font-bold">Cosepic</h1>
+    </main>
   );
 }

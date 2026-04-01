@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { SidebarNav } from "@/components/SidebarNav";
-import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Cosepic",
-  description: "本地 Cosplay 图集浏览器",
+  description: "Cosplay image pack browser",
 };
 
 export default function RootLayout({
@@ -26,18 +24,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="dark">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <TooltipProvider>
-          <SidebarProvider>
-            <div className="flex min-h-screen">
-              <SidebarNav />
-              <main className="flex-1 p-4">{children}</main>
-            </div>
-          </SidebarProvider>
-        </TooltipProvider>
+    <html
+      lang="zh-CN"
+      className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col bg-background text-foreground">
+        <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
   );
