@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import create_db_and_tables
-from app.routers import characters, cosers, imports, outfits, packs, system, tags, works
+from app.routers import assets, characters, cosers, imports, outfits, packs, system, tags, tasks, works
 
 
 @asynccontextmanager
@@ -43,6 +43,8 @@ def create_app() -> FastAPI:
     application.include_router(outfits.router)
     application.include_router(tags.router)
     application.include_router(imports.router)
+    application.include_router(assets.router)
+    application.include_router(tasks.router)
 
     return application
 
