@@ -15,13 +15,23 @@ class PackCreate(BaseModel):
 
 
 class PackUpdate(BaseModel):
-    """Request body for updating a Pack."""
+    """Request body for updating a Pack.
+
+    Relation arrays use full-replacement semantics: if provided, the
+    existing relations of that type are replaced entirely.  Omitted
+    keys leave existing relations unchanged.  Use ``model_fields_set``
+    to distinguish "not provided" from "provided as empty list".
+    """
 
     title: str | None = None
     description: str | None = None
     dir_path: str | None = None
     status: str | None = None
     cover_asset_id: int | None = None
+    coser_ids: list[int] | None = None
+    character_ids: list[int] | None = None
+    outfit_ids: list[int] | None = None
+    tag_ids: list[int] | None = None
 
 
 class CoserBrief(BaseModel):

@@ -1,7 +1,7 @@
 """Integration tests for Pack API endpoints."""
 
 from app.models.relations import PackCharacter, PackCoser, PackTag
-from tests.conftest import make_asset, make_character, make_coser, make_pack, make_tag, make_work
+from tests.conftest import make_asset, make_character, make_coser, make_outfit, make_pack, make_tag, make_work
 
 
 class TestPackCRUD:
@@ -173,3 +173,126 @@ class TestPackDetail:
         assert len(chars) == 1
         assert chars[0]["name"] == "Amiya"
         assert chars[0]["work_name"] == "Arknights"
+
+
+class TestPackRelationUpdate:
+    """Tests for updating pack relations via PATCH."""
+
+    def test_set_coser_ids(self, client, db):
+        pack = make_pack(db)
+        c1 = make_coser(db, name="Coser1")
+        c2 = make_coser(db, name="Coser2")
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"coser_ids": [c1.id, c2.id]},
+        )
+        assert r.status_code == 200
+        cosers = r.json()["cosers"]
+        assert len(cosers) == 2
+        names = {c["name"] for c in cosers}
+        assert names == {"Coser1", "Coser2"}
+        # First id is primary
+        primary = [c for c in cosers if c["is_primary"]]
+        assert len(primary) == 1
+        assert primary[0]["name"] == "Coser1"
+
+    def test_replace_coser_ids(self, client, db):
+        pack = make_pack(db)
+        c1 = make_coser(db, name="Old")
+        c2 = make_coser(db, name="New")
+        db.add(PackCoser(pack_id=pack.id, coser_id=c1.id, is_primary=True))
+        db.commit()
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"coser_ids": [c2.id]},
+        )
+        cosers = r.json()["cosers"]
+        assert len(cosers) == 1
+        assert cosers[0]["name"] == "New"
+
+    def test_clear_coser_ids(self, client, db):
+        pack = make_pack(db)
+        c1 = make_coser(db, name="ToRemove")
+        db.add(PackCoser(pack_id=pack.id, coser_id=c1.id, is_primary=True))
+        db.commit()
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"coser_ids": []},
+        )
+        assert r.json()["cosers"] == []
+
+    def test_omitted_relation_unchanged(self, client, db):
+        """When coser_ids is not in the request body, existing cosers stay."""
+        pack = make_pack(db)
+        c1 = make_coser(db, name="Keep")
+        db.add(PackCoser(pack_id=pack.id, coser_id=c1.id, is_primary=True))
+        db.commit()
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"title": "NewTitle"},
+        )
+        assert r.json()["title"] == "NewTitle"
+        assert len(r.json()["cosers"]) == 1
+        assert r.json()["cosers"][0]["name"] == "Keep"
+
+    def test_set_character_ids(self, client, db):
+        pack = make_pack(db)
+        work = make_work(db, name="TestWork")
+        ch = make_character(db, name="Char1", work_id=work.id)
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"character_ids": [ch.id]},
+        )
+        chars = r.json()["characters"]
+        assert len(chars) == 1
+        assert chars[0]["name"] == "Char1"
+        assert chars[0]["work_name"] == "TestWork"
+
+    def test_set_outfit_ids(self, client, db):
+        pack = make_pack(db)
+        ch = make_character(db, name="Char")
+        outfit = make_outfit(db, name="Summer", character_id=ch.id)
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"outfit_ids": [outfit.id]},
+        )
+        outfits = r.json()["outfits"]
+        assert len(outfits) == 1
+        assert outfits[0]["name"] == "Summer"
+
+    def test_set_tag_ids(self, client, db):
+        pack = make_pack(db)
+        t1 = make_tag(db, name="outdoor")
+        t2 = make_tag(db, name="studio")
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={"tag_ids": [t1.id, t2.id]},
+        )
+        tags = r.json()["tags"]
+        assert len(tags) == 2
+        names = {t["name"] for t in tags}
+        assert names == {"outdoor", "studio"}
+
+    def test_update_multiple_relations_at_once(self, client, db):
+        pack = make_pack(db)
+        coser = make_coser(db, name="Multi")
+        tag = make_tag(db, name="multi_tag")
+
+        r = client.patch(
+            f"/api/v1/packs/{pack.id}",
+            json={
+                "title": "Updated",
+                "coser_ids": [coser.id],
+                "tag_ids": [tag.id],
+            },
+        )
+        assert r.json()["title"] == "Updated"
+        assert len(r.json()["cosers"]) == 1
+        assert len(r.json()["tags"]) == 1

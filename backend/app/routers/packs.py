@@ -72,7 +72,7 @@ def create_pack(body: PackCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{pack_id}", response_model=PackOut)
 def update_pack(pack_id: int, body: PackUpdate, db: Session = Depends(get_db)):
-    """Update pack metadata."""
+    """Update pack metadata and/or relations."""
     pack = pack_service.update_pack(
         db, pack_id,
         title=body.title,
@@ -80,6 +80,11 @@ def update_pack(pack_id: int, body: PackUpdate, db: Session = Depends(get_db)):
         dir_path=body.dir_path,
         status=body.status,
         cover_asset_id=body.cover_asset_id,
+        coser_ids=body.coser_ids,
+        character_ids=body.character_ids,
+        outfit_ids=body.outfit_ids,
+        tag_ids=body.tag_ids,
+        relation_fields_set=body.model_fields_set,
     )
     if pack is None:
         raise HTTPException(status_code=404, detail="Pack not found")

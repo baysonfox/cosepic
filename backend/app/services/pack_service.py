@@ -180,8 +180,19 @@ def update_pack(
     dir_path: str | None = None,
     status: str | None = None,
     cover_asset_id: int | None = None,
+    coser_ids: list[int] | None = None,
+    character_ids: list[int] | None = None,
+    outfit_ids: list[int] | None = None,
+    tag_ids: list[int] | None = None,
+    relation_fields_set: set[str] | None = None,
 ) -> Pack | None:
-    """Update an existing Pack."""
+    """Update an existing Pack.
+
+    Scalar fields are updated when not None.  Relation arrays are only
+    touched when the corresponding key appears in *relation_fields_set*
+    (which comes from ``body.model_fields_set`` in the router).  This
+    lets callers distinguish "not provided" from "provided as []".
+    """
     pack = db.get(Pack, pack_id)
     if pack is None:
         return None
@@ -199,6 +210,19 @@ def update_pack(
     db.add(pack)
     db.commit()
     db.refresh(pack)
+
+    if relation_fields_set is None:
+        relation_fields_set = set()
+
+    if "coser_ids" in relation_fields_set:
+        _replace_relations(db, pack_id, PackCoser, "coser_id", coser_ids or [])
+    if "character_ids" in relation_fields_set:
+        _replace_relations(db, pack_id, PackCharacter, "character_id", character_ids or [])
+    if "outfit_ids" in relation_fields_set:
+        _replace_relations(db, pack_id, PackOutfit, "outfit_id", outfit_ids or [])
+    if "tag_ids" in relation_fields_set:
+        _replace_relations(db, pack_id, PackTag, "tag_id", tag_ids or [])
+
     return pack
 
 
@@ -323,3 +347,31 @@ def _pack_tags(db: Session, pack_ids: list[int]) -> dict[int, list[dict]]:
             "id": tag.id, "name": tag.name, "tag_type": tag.tag_type,
         })
     return result
+
+
+def _replace_relations(
+    db: Session,
+    pack_id: int,
+    link_model: type,
+    fk_field: str,
+    new_ids: list[int],
+) -> None:
+    """Replace all relations of a given type for a pack.
+
+    Deletes existing links and inserts new ones.  The first id in the
+    list is marked ``is_primary=True`` when the model supports it.
+    """
+    existing = db.exec(
+        select(link_model).where(link_model.pack_id == pack_id),
+    ).all()
+    for link in existing:
+        db.delete(link)
+    db.flush()
+
+    has_primary = hasattr(link_model, "is_primary")
+    for i, entity_id in enumerate(new_ids):
+        kwargs: dict = {"pack_id": pack_id, fk_field: entity_id}
+        if has_primary:
+            kwargs["is_primary"] = i == 0
+        db.add(link_model(**kwargs))
+    db.commit()
