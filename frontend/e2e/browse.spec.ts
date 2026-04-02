@@ -1,26 +1,26 @@
 import { expect, test } from "@playwright/test";
 
-test("home page shows seeded pack and pack detail opens", async ({ page }) => {
+test("home page shows pack cards and pack detail opens", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Recent Packs" })).toBeVisible();
-  await expect(page.getByText("Amiya Winter Pack")).toBeVisible();
+  await expect(page.getByText("Amiya Spring Pack")).toBeVisible();
 
-  await page.getByRole("link", { name: /Amiya Winter Pack/i }).click();
+  await page.getByRole("link", { name: /Amiya Spring Pack/i }).first().click();
   await expect(page).toHaveURL(/\/packs\/1$/);
-  await expect(page.getByRole("heading", { name: "Amiya Winter Pack" })).toBeVisible();
-  await expect(page.getByText("Seed pack for browser tests")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Amiya Spring Pack" })).toBeVisible();
+  await expect(page.getByText("Updated from Playwright")).toBeVisible();
 });
 
-test("packs page filter UI renders and seeded pack is listed", async ({ page }) => {
+test("packs page filter UI renders and current pack is listed", async ({ page }) => {
   await page.goto("/packs");
 
   await expect(page.getByRole("heading", { name: "Packs" })).toBeVisible();
-  await expect(page.getByPlaceholder("Search packs...")).toBeVisible();
-  await expect(page.getByText("Amiya Winter Pack")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Search packs..." }).first()).toBeVisible();
+  await expect(page.getByText("Amiya Spring Pack")).toBeVisible();
 });
 
-test("entity pages show seeded records", async ({ page }) => {
+test("entity pages show current records", async ({ page }) => {
   await page.goto("/cosers");
   await expect(page.getByText("Moe")).toBeVisible();
 

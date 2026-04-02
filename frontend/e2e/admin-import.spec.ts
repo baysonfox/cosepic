@@ -44,5 +44,7 @@ test("admin imports flow scans edits selects and commits a pack", async ({ page 
   await expect(page.getByText(/Pack IDs:/)).toBeVisible();
 
   await page.goto("/packs");
-  await expect(page.getByText("阿米娅 导入测试包")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /阿米娅 导入测试包/i }).first(),
+  ).toBeVisible();
 });
