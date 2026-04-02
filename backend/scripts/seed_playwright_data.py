@@ -1,7 +1,8 @@
 from pathlib import Path
+import shutil
 
 import pillow_avif  # noqa: F401
-from PIL import Image
+import PIL.Image
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.models import Asset, Character, Coser, Pack, PackCharacter, PackCoser, Work
@@ -16,13 +17,30 @@ IMAGE_PATH = ROOT.parent / "frontend" / "public" / "test-seed.png"
 def reset_fs() -> None:
     if DB_PATH.exists():
         DB_PATH.unlink()
+    if DATA_DIR.exists():
+        shutil.rmtree(DATA_DIR)
     THUMB_DIR.mkdir(parents=True, exist_ok=True)
     pack_dir = DATA_DIR / "packs" / "amiya_winter"
     pack_dir.mkdir(parents=True, exist_ok=True)
     target = pack_dir / "cover.png"
     target.write_bytes(IMAGE_PATH.read_bytes())
+
+    import_root = DATA_DIR / "imports"
+    import_root.mkdir(parents=True, exist_ok=True)
+
+    amiya_dir = import_root / "鳗鱼霏儿 - 明日方舟 - 阿米娅 2p"
+    amiya_dir.mkdir(parents=True, exist_ok=True)
+    (amiya_dir / "01.png").write_bytes(IMAGE_PATH.read_bytes())
+    (amiya_dir / "02.png").write_bytes(IMAGE_PATH.read_bytes())
+
+    keqing_dir = import_root / "铃木美咲 - 原神 - 刻晴 花嫁 2p 1v"
+    keqing_dir.mkdir(parents=True, exist_ok=True)
+    (keqing_dir / "01.png").write_bytes(IMAGE_PATH.read_bytes())
+    (keqing_dir / "02.png").write_bytes(IMAGE_PATH.read_bytes())
+    (keqing_dir / "clip.mp4").write_bytes(b"\x00" * 128)
+
     thumb = THUMB_DIR / "1.avif"
-    with Image.open(IMAGE_PATH) as img:
+    with PIL.Image.open(IMAGE_PATH) as img:
         img.convert("RGB").save(thumb, format="AVIF", quality=60)
 
 

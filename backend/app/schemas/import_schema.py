@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ImportScanRequest(BaseModel):
@@ -13,6 +13,8 @@ class ImportScanRequest(BaseModel):
 
 class ImportCandidateOut(BaseModel):
     """A candidate directory found during scan."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     batch_id: int
@@ -42,6 +44,8 @@ class ImportCandidateUpdate(BaseModel):
 
 class ImportBatchOut(BaseModel):
     """Response for an import batch."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     root_path: str

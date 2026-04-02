@@ -4,6 +4,7 @@
 
 import type {
   ImportBatchOut,
+  ImportCandidateOut,
   ImportCandidateUpdate,
   ImportCommitResult,
 } from "./types";
@@ -33,7 +34,7 @@ export async function updateCandidate(
   candidateId: number,
   data: ImportCandidateUpdate,
   fetcher: Fetcher,
-): Promise<unknown> {
+): Promise<ImportCandidateOut> {
   return fetcher(`/api/v1/imports/${batchId}/candidates/${candidateId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

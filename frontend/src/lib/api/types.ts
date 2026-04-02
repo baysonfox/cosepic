@@ -165,7 +165,7 @@ export interface CharacterCreate {
 
 export interface CharacterUpdate {
   name?: string;
-  work_id?: number;
+  work_id?: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,9 +224,9 @@ export interface ImportCandidateOut {
   folder_path: string;
   folder_name: string;
   detected_title: string | null;
-  detected_coser_names: string[] | null;
+  detected_coser_names: string | null;
   detected_work_name: string | null;
-  detected_character_names: string[] | null;
+  detected_character_names: string | null;
   photo_count: number;
   video_count: number;
   total_size_bytes: number;
@@ -236,11 +236,11 @@ export interface ImportCandidateOut {
 }
 
 export interface ImportCandidateUpdate {
-  detected_title?: string;
-  detected_coser_names?: string[];
-  detected_work_name?: string;
-  detected_character_names?: string[];
-  status?: string;
+  detected_title?: string | null;
+  detected_coser_names?: string | null;
+  detected_work_name?: string | null;
+  detected_character_names?: string | null;
+  status?: string | null;
 }
 
 export interface ImportBatchOut {
