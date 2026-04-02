@@ -33,6 +33,18 @@ describe("parsePackFilterParams", () => {
     });
   });
 
+  it("parses all entity filter ids", () => {
+    const result = parsePackFilterParams({
+      work_ids: "2,4",
+      outfit_ids: "7,9",
+      tag_ids: "11,12",
+    });
+
+    expect(result.work_ids).toEqual([2, 4]);
+    expect(result.outfit_ids).toEqual([7, 9]);
+    expect(result.tag_ids).toEqual([11, 12]);
+  });
+
   it("falls back to defaults", () => {
     const result = parsePackFilterParams({});
 
@@ -59,6 +71,24 @@ describe("buildPackFilterSearchParams", () => {
     expect(params.get("has_video")).toBe("false");
     expect(params.get("page")).toBe("3");
     expect(params.get("page_size")).toBe("40");
+  });
+
+  it("serializes all entity filter ids", () => {
+    const params = buildPackFilterSearchParams({
+      work_ids: [3],
+      character_ids: [4, 5],
+      outfit_ids: [6],
+      tag_ids: [7, 8],
+      page: 1,
+      page_size: 20,
+    });
+
+    expect(params.get("work_ids")).toBe("3");
+    expect(params.get("character_ids")).toBe("4,5");
+    expect(params.get("outfit_ids")).toBe("6");
+    expect(params.get("tag_ids")).toBe("7,8");
+    expect(params.get("page")).toBeNull();
+    expect(params.get("page_size")).toBeNull();
   });
 
   it("omits default page and page size", () => {
