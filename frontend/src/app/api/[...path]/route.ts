@@ -34,7 +34,10 @@ async function proxy(
 
   // Forward body for non-GET/HEAD
   if (request.method !== "GET" && request.method !== "HEAD") {
-    init.body = await request.arrayBuffer();
+    const body = await request.text();
+    if (body) {
+      init.body = body;
+    }
   }
 
   const backendRes = await fetch(url.toString(), init);
