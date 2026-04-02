@@ -8,6 +8,7 @@ import {
   FolderKanban,
   Grid3X3,
   LayoutDashboard,
+  ListChecks,
   Package,
   Sparkles,
   Tags,
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/imports", label: "Imports", icon: Upload },
+  { href: "/admin/tasks", label: "Tasks", icon: ListChecks },
   { href: "/admin/packs", label: "Packs", icon: Package },
   { href: "/admin/cosers", label: "Cosers", icon: Users },
   { href: "/admin/works", label: "Works", icon: BookOpen },

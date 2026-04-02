@@ -34,14 +34,14 @@ describe("AdminSidebar", () => {
     expect(inactiveLink).toHaveClass("text-muted-foreground");
   });
 
-  it("renders back-to-browse link", () => {
-    usePathnameMock.mockReturnValue("/admin");
+  it("renders tasks link", () => {
+    usePathnameMock.mockReturnValue("/admin/tasks");
 
     render(<AdminSidebar />);
 
-    expect(screen.getByRole("link", { name: /Back to browse/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Tasks/i })).toHaveAttribute(
       "href",
-      "/",
+      "/admin/tasks",
     );
   });
 });
