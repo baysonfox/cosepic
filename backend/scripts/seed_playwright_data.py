@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shutil
 
 import pillow_avif  # noqa: F401
@@ -8,9 +9,16 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.models import Asset, Character, Coser, Pack, PackCharacter, PackCoser, Work
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "playwright.sqlite"
-DATA_DIR = ROOT / "playwright_data"
-THUMB_DIR = DATA_DIR / "cache" / "thumbnails"
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///playwright.sqlite")
+DB_PATH = ROOT / DATABASE_URL.removeprefix("sqlite:///")
+DATA_DIR = Path(os.environ.get("DATA_DIR", "./playwright_data"))
+if not DATA_DIR.is_absolute():
+    DATA_DIR = ROOT / DATA_DIR
+THUMB_DIR = Path(
+    os.environ.get("THUMBNAIL_DIR", str(DATA_DIR / "cache" / "thumbnails")),
+)
+if not THUMB_DIR.is_absolute():
+    THUMB_DIR = ROOT / THUMB_DIR
 IMAGE_PATH = ROOT.parent / "frontend" / "public" / "test-seed.png"
 
 
