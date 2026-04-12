@@ -16,6 +16,20 @@ def _natural_sort_key(s: str) -> list:
     return [int(c) if c.isdigit() else c.lower() for c in re.split(r"(\d+)", s)]
 
 
+def _is_valid_thumbnail(thumb_path: Path, source: Path) -> bool:
+    """Return whether an existing thumbnail can be safely reused."""
+    if not thumb_path.exists():
+        return False
+    if thumb_path.stat().st_mtime < source.stat().st_mtime:
+        return False
+
+    try:
+        with Image.open(thumb_path) as img:
+            return img.width == settings.thumbnail_width
+    except Exception:
+        return False
+
+
 def generate_thumbnail(
     source_path: str | Path,
     asset_id: int,
@@ -32,8 +46,7 @@ def generate_thumbnail(
     thumb_dir.mkdir(parents=True, exist_ok=True)
     thumb_path = thumb_dir / f"{asset_id}.avif"
 
-    # Skip if thumbnail is newer than source
-    if thumb_path.exists() and thumb_path.stat().st_mtime >= source.stat().st_mtime:
+    if _is_valid_thumbnail(thumb_path, source):
         return thumb_path
 
     try:

@@ -14,7 +14,12 @@ from app.models.pack import Pack
 from app.models.relations import PackCharacter, PackCoser, PackOutfit
 from app.models.suggestion import MetadataSuggestion
 from app.models.work import Work
-from app.services.dir_parser import parse_dir_name
+from app.services import asset_service
+from app.services.dir_parser import (
+    ORIGINAL_CHARACTER_NAME,
+    ORIGINAL_WORK_NAME,
+    parse_dir_name,
+)
 from app.utils.file_utils import scan_media_dir
 
 
@@ -155,6 +160,8 @@ def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | N
         if candidate.detected_character_names
         else []
     )
+    if work_name == ORIGINAL_WORK_NAME:
+        character_raw = [ORIGINAL_CHARACTER_NAME]
 
     # Create-or-get Work
     work = None
@@ -232,6 +239,7 @@ def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | N
     pack.last_scanned_at = datetime.now(timezone.utc)
     db.add(pack)
     db.commit()
+    asset_service.generate_pack_thumbnails(db, pack.id)
     return pack.id
 
 

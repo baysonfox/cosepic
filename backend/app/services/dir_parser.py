@@ -17,6 +17,10 @@ import re
 from dataclasses import dataclass, field
 
 
+ORIGINAL_WORK_NAME = "原创"
+ORIGINAL_CHARACTER_NAME = "OriginalCharacter"
+
+
 @dataclass
 class CharacterParsed:
     """A parsed character name with optional outfit."""
@@ -73,21 +77,25 @@ def parse_dir_name(raw: str) -> DirParseResult | None:
 
     # 4. Parse characters (comma-separated)
     characters: list[CharacterParsed] = []
-    for segment in characters_part.split(","):
-        segment = segment.strip()
-        if not segment:
-            continue
-        # First space separates character name from outfit
-        space_idx = segment.find(" ")
-        if space_idx == -1:
-            characters.append(CharacterParsed(name=segment))
-        else:
-            char_name = segment[:space_idx]
-            outfit_name = segment[space_idx + 1:].strip()
-            characters.append(CharacterParsed(
-                name=char_name,
-                outfit=outfit_name if outfit_name else None,
-            ))
+    if work_part == ORIGINAL_WORK_NAME:
+        if characters_part:
+            characters.append(CharacterParsed(name=ORIGINAL_CHARACTER_NAME))
+    else:
+        for segment in characters_part.split(","):
+            segment = segment.strip()
+            if not segment:
+                continue
+            # First space separates character name from outfit
+            space_idx = segment.find(" ")
+            if space_idx == -1:
+                characters.append(CharacterParsed(name=segment))
+            else:
+                char_name = segment[:space_idx]
+                outfit_name = segment[space_idx + 1:].strip()
+                characters.append(CharacterParsed(
+                    name=char_name,
+                    outfit=outfit_name if outfit_name else None,
+                ))
 
     # 5. Build title from characters part
     title = characters_part

@@ -149,14 +149,19 @@ def create_character(db: Session, *, name: str, work_id: int | None = None) -> C
 
 
 def update_character(
-    db: Session, char_id: int, *, name: str | None = None, work_id: int | None = None,
+    db: Session,
+    char_id: int,
+    *,
+    name: str | None = None,
+    work_id: int | None = None,
+    work_id_provided: bool = False,
 ) -> Character | None:
     char = db.get(Character, char_id)
     if char is None:
         return None
     if name is not None:
         char.name = name
-    if work_id is not None:
+    if work_id_provided:
         char.work_id = work_id
     db.add(char)
     db.commit()
@@ -239,12 +244,20 @@ def create_outfit(db: Session, *, name: str, character_id: int) -> Outfit:
     return outfit
 
 
-def update_outfit(db: Session, outfit_id: int, *, name: str | None = None) -> Outfit | None:
+def update_outfit(
+    db: Session,
+    outfit_id: int,
+    *,
+    name: str | None = None,
+    character_id: int | None = None,
+) -> Outfit | None:
     outfit = db.get(Outfit, outfit_id)
     if outfit is None:
         return None
     if name is not None:
         outfit.name = name
+    if character_id is not None:
+        outfit.character_id = character_id
     db.add(outfit)
     db.commit()
     db.refresh(outfit)

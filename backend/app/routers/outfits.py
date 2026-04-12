@@ -39,7 +39,12 @@ def create_outfit(body: OutfitCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{outfit_id}", response_model=OutfitOut)
 def update_outfit(outfit_id: int, body: OutfitUpdate, db: Session = Depends(get_db)):
-    outfit = entity_service.update_outfit(db, outfit_id, name=body.name)
+    outfit = entity_service.update_outfit(
+        db,
+        outfit_id,
+        name=body.name,
+        character_id=body.character_id,
+    )
     if outfit is None:
         raise HTTPException(status_code=404, detail="Outfit not found")
     return entity_service.get_outfit(db, outfit.id)

@@ -61,6 +61,7 @@ class OutfitCreate(BaseModel):
 
 class OutfitUpdate(BaseModel):
     name: str | None = None
+    character_id: int | None = None
 
 
 class OutfitOut(BaseModel):

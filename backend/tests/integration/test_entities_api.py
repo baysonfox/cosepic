@@ -84,6 +84,14 @@ class TestCharactersAPI:
         assert r.status_code == 200
         assert r.json()["name"] == "NewChar"
 
+    def test_clear_character_work(self, client, db):
+        w = make_work(db, name="ArkWork")
+        c = make_character(db, name="Amiya", work_id=w.id)
+        r = client.patch(f"/api/v1/characters/{c.id}", json={"work_id": None})
+        assert r.status_code == 200
+        assert r.json()["work_id"] is None
+        assert r.json()["work_name"] is None
+
     def test_delete_character_cascades_outfits(self, client, db):
         c = make_character(db, name="CharWithOutfit")
         o = make_outfit(db, name="Swimsuit", character_id=c.id)
@@ -123,6 +131,18 @@ class TestOutfitsAPI:
         r = client.patch(f"/api/v1/outfits/{o.id}", json={"name": "NewOutfit"})
         assert r.status_code == 200
         assert r.json()["name"] == "NewOutfit"
+
+    def test_update_outfit_character(self, client, db):
+        c1 = make_character(db, name="OldChar")
+        c2 = make_character(db, name="NewChar")
+        o = make_outfit(db, name="Switchable", character_id=c1.id)
+        r = client.patch(
+            f"/api/v1/outfits/{o.id}",
+            json={"character_id": c2.id},
+        )
+        assert r.status_code == 200
+        assert r.json()["character_id"] == c2.id
+        assert r.json()["character_name"] == "NewChar"
 
     def test_delete_outfit(self, client, db):
         c = make_character(db, name="DelChar")

@@ -39,7 +39,13 @@ def create_character(body: CharacterCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{char_id}", response_model=CharacterOut)
 def update_character(char_id: int, body: CharacterUpdate, db: Session = Depends(get_db)):
-    char = entity_service.update_character(db, char_id, name=body.name, work_id=body.work_id)
+    char = entity_service.update_character(
+        db,
+        char_id,
+        name=body.name,
+        work_id=body.work_id,
+        work_id_provided="work_id" in body.model_fields_set,
+    )
     if char is None:
         raise HTTPException(status_code=404, detail="Character not found")
     return entity_service.get_character(db, char.id)
