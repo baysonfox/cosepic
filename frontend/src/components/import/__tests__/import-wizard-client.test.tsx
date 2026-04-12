@@ -162,6 +162,33 @@ describe("ImportWizardClient", () => {
     });
   });
 
+  it("shows original work character placeholder naturally", async () => {
+    scanImportMock.mockResolvedValue({
+      ...batch,
+      candidates: [
+        {
+          ...batch.candidates[0],
+          folder_name: "兔总裁 - 原创 - 白兔女仆 12p",
+          detected_title: "白兔女仆",
+          detected_work_name: "原创",
+          detected_character_names: "OriginalCharacter",
+        },
+      ],
+      total_candidates: 1,
+    });
+
+    render(<ImportWizardClient />);
+
+    fireEvent.change(screen.getByLabelText("Root path"), {
+      target: { value: "/imports/test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    expect(await screen.findByText("白兔女仆")).toBeInTheDocument();
+    expect(screen.getAllByText(/^原创$/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("OriginalCharacter")).not.toBeInTheDocument();
+  });
+
   it("updates selection count from checkbox and clear action", async () => {
     scanImportMock.mockResolvedValue(batch);
     updateCandidateMock
@@ -252,5 +279,185 @@ describe("ImportWizardClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
     expect(await screen.findByText("Root path not found")).toBeInTheDocument();
+  });
+
+  it("collapses already-imported candidates by default after scan", async () => {
+    const batchWithImported: ImportBatchOut = {
+      ...batch,
+      candidates: [
+        batch.candidates[0],
+        { ...batch.candidates[1], status: "imported" },
+      ],
+    };
+    scanImportMock.mockResolvedValue(batchWithImported);
+
+    render(<ImportWizardClient />);
+
+    fireEvent.change(screen.getByLabelText("Root path"), {
+      target: { value: "/imports/test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await screen.findByText("Batch summary");
+
+    expect(screen.getAllByText(batch.candidates[0].folder_name).length).toBe(2);
+    expect(screen.getByLabelText(`Select ${batch.candidates[0].folder_name}`)).toBeInTheDocument();
+
+    expect(screen.getAllByText(batch.candidates[1].folder_name).length).toBe(1);
+    expect(
+      screen.queryByLabelText(`Select ${batch.candidates[1].folder_name}`),
+    ).not.toBeInTheDocument();
+  });
+
+  it("expands a collapsed candidate on click", async () => {
+    const batchWithImported: ImportBatchOut = {
+      ...batch,
+      candidates: [
+        { ...batch.candidates[0], status: "imported" },
+      ],
+      total_candidates: 1,
+    };
+    scanImportMock.mockResolvedValue(batchWithImported);
+
+    render(<ImportWizardClient />);
+
+    fireEvent.change(screen.getByLabelText("Root path"), {
+      target: { value: "/imports/test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await screen.findByText("Batch summary");
+
+    expect(
+      screen.queryByLabelText(`Select ${batch.candidates[0].folder_name}`),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByLabelText(`Expand ${batch.candidates[0].folder_name}`),
+    );
+
+    expect(
+      screen.getByLabelText(`Select ${batch.candidates[0].folder_name}`),
+    ).toBeInTheDocument();
+  });
+
+  it("collapses newly-imported candidates after commit", async () => {
+    scanImportMock.mockResolvedValue(batch);
+    commitBatchMock.mockResolvedValue({
+      imported_count: 1,
+      pack_ids: [3001],
+    });
+
+    render(<ImportWizardClient />);
+
+    fireEvent.change(screen.getByLabelText("Root path"), {
+      target: { value: "/imports/test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await screen.findByText("Selected 1 of 2");
+    fireEvent.click(screen.getByRole("button", { name: "Import Selected (1)" }));
+
+    await screen.findByText("Imported 1 packs.");
+
+    expect(
+      screen.queryByLabelText(`Select ${batch.candidates[1].folder_name}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(`Expand ${batch.candidates[1].folder_name}`),
+    ).toBeInTheDocument();
+  });
+
+  it("paginates candidates when exceeding page size", async () => {
+    const largeBatch: ImportBatchOut = {
+      ...batch,
+      total_candidates: 25,
+      candidates: Array.from({ length: 25 }, (_, i) => ({
+        id: 200 + i,
+        batch_id: 55,
+        folder_path: `/imports/test/pack-${i}`,
+        folder_name: `pack-${i}`,
+        detected_title: `Title ${i}`,
+        detected_coser_names: null,
+        detected_work_name: null,
+        detected_character_names: null,
+        photo_count: 5,
+        video_count: 0,
+        total_size_bytes: 512,
+        existing_pack_id: null,
+        status: "pending" as const,
+        created_at: "2026-04-02T00:00:00Z",
+      })),
+    };
+    scanImportMock.mockResolvedValue(largeBatch);
+
+    render(<ImportWizardClient />);
+
+    fireEvent.change(screen.getByLabelText("Root path"), {
+      target: { value: "/imports/test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await screen.findByText("Batch summary");
+
+    expect(screen.getAllByText(/Showing 1-20 of 25/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Select pack-0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Select pack-19")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Select pack-20")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByLabelText("Page 2")[0]);
+
+    expect(screen.getAllByText(/Showing 21-25 of 25/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Select pack-20")).toBeInTheDocument();
+    expect(screen.getByLabelText("Select pack-24")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Select pack-0")).not.toBeInTheDocument();
+  });
+
+  it("select all operates across all pages", async () => {
+    const largeBatch: ImportBatchOut = {
+      ...batch,
+      total_candidates: 25,
+      candidates: Array.from({ length: 25 }, (_, i) => ({
+        id: 200 + i,
+        batch_id: 55,
+        folder_path: `/imports/test/pack-${i}`,
+        folder_name: `pack-${i}`,
+        detected_title: `Title ${i}`,
+        detected_coser_names: null,
+        detected_work_name: null,
+        detected_character_names: null,
+        photo_count: 5,
+        video_count: 0,
+        total_size_bytes: 512,
+        existing_pack_id: null,
+        status: "pending" as const,
+        created_at: "2026-04-02T00:00:00Z",
+      })),
+    };
+    scanImportMock.mockResolvedValue(largeBatch);
+
+    for (let i = 0; i < 25; i++) {
+      updateCandidateMock.mockResolvedValueOnce({
+        ...largeBatch.candidates[i],
+        status: "selected",
+      });
+    }
+
+    render(<ImportWizardClient />);
+
+    fireEvent.change(screen.getByLabelText("Root path"), {
+      target: { value: "/imports/test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
+
+    await screen.findByText("Batch summary");
+
+    fireEvent.click(screen.getByRole("button", { name: "Select All (25)" }));
+
+    await waitFor(() => {
+      expect(updateCandidateMock).toHaveBeenCalledTimes(25);
+    });
+
+    expect(await screen.findByText("Selected 25 of 25")).toBeInTheDocument();
   });
 });

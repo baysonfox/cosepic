@@ -45,18 +45,30 @@ export function LazyImage({
   const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
+    setLoaded(false);
+    setError(false);
+  }, [src]);
+
+  useEffect(() => {
     if (blurhash) {
       const url = decodeBlurhash(blurhash);
       setPlaceholderUrl(url);
+      return;
     }
+    setPlaceholderUrl(null);
   }, [blurhash]);
+
+  useEffect(() => {
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
+      setLoaded(true);
+    }
+  }, [src]);
 
   return (
     <div
       className={cn("relative overflow-hidden bg-muted", className)}
       style={{ aspectRatio }}
     >
-      {/* Blurhash placeholder */}
       {placeholderUrl && (
         <img
           src={placeholderUrl}
@@ -66,7 +78,6 @@ export function LazyImage({
         />
       )}
 
-      {/* Actual image */}
       {!error && (
         <img
           ref={imgRef}
@@ -82,9 +93,8 @@ export function LazyImage({
         />
       )}
 
-      {/* Error fallback */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted text-muted-foreground text-xs">
+        <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
           No image
         </div>
       )}

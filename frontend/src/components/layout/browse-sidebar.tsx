@@ -79,9 +79,9 @@ export function BrowseSidebar() {
             onClick={() => setOpen(false)}
           />
         ))}
-      </nav>
 
-      <div className="mt-auto pt-4 border-t border-border">
+        <hr className="mt-auto border-t border-border" />
+
         <NavLink
           href="/admin"
           label="Admin"
@@ -89,7 +89,9 @@ export function BrowseSidebar() {
           active={pathname.startsWith("/admin")}
           onClick={() => setOpen(false)}
         />
-      </div>
+      </nav>
+
+      
     </>
   );
 

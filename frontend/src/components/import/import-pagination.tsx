@@ -1,35 +1,21 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Suspense } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-interface PaginationProps {
+interface ImportPaginationProps {
   total: number;
   page: number;
   pageSize: number;
+  onPageChange: (page: number) => void;
 }
 
-function PaginationContent({ total, page, pageSize }: PaginationProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+export function ImportPagination({ total, page, pageSize, onPageChange }: ImportPaginationProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
 
-  function goToPage(nextPage: number) {
-    const next = new URLSearchParams(searchParams.toString());
-    if (nextPage <= 1) {
-      next.delete("page");
-    } else {
-      next.set("page", String(nextPage));
-    }
-    router.push(`${pathname}?${next.toString()}`);
-  }
-
-  if (totalPages <= 1 && total <= pageSize) {
+  if (totalPages <= 1) {
     return (
       <div className="text-sm text-muted-foreground">
         Showing {start}-{end} of {total}
@@ -53,7 +39,8 @@ function PaginationContent({ total, page, pageSize }: PaginationProps) {
           variant="outline"
           size="icon"
           disabled={page <= 1}
-          onClick={() => goToPage(page - 1)}
+          onClick={() => onPageChange(page - 1)}
+          aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
         </Button>
@@ -63,7 +50,8 @@ function PaginationContent({ total, page, pageSize }: PaginationProps) {
             key={pageNumber}
             variant={pageNumber === page ? "default" : "outline"}
             size="sm"
-            onClick={() => goToPage(pageNumber)}
+            onClick={() => onPageChange(pageNumber)}
+            aria-label={`Page ${pageNumber}`}
           >
             {pageNumber}
           </Button>
@@ -73,30 +61,12 @@ function PaginationContent({ total, page, pageSize }: PaginationProps) {
           variant="outline"
           size="icon"
           disabled={page >= totalPages}
-          onClick={() => goToPage(page + 1)}
+          onClick={() => onPageChange(page + 1)}
+          aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
     </div>
-  );
-}
-
-function PaginationFallback({ total, page, pageSize }: PaginationProps) {
-  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, total);
-
-  return (
-    <div className="text-sm text-muted-foreground">
-      Showing {start}-{end} of {total}
-    </div>
-  );
-}
-
-export function Pagination({ total, page, pageSize }: PaginationProps) {
-  return (
-    <Suspense fallback={<PaginationFallback total={total} page={page} pageSize={pageSize} />}>
-      <PaginationContent total={total} page={page} pageSize={pageSize} />
-    </Suspense>
   );
 }

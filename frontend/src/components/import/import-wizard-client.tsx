@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, TriangleAlert } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, ChevronUp, TriangleAlert } from "lucide-react";
 import { ImportCandidateEditor } from "@/components/import/import-candidate-editor";
 import { ImportCommitBar } from "@/components/import/import-commit-bar";
+import { ImportPagination } from "@/components/import/import-pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +22,10 @@ import type {
   ImportCandidateUpdate,
   ImportCommitResult,
 } from "@/lib/api/types";
-import { formatBytes } from "@/lib/utils";
+import {
+  formatBytes,
+  formatImportCharacterNames,
+} from "@/lib/utils";
 
 function CandidateStatusBadge({ status }: { status: string }) {
   if (status === "selected") {
@@ -49,7 +53,11 @@ function CandidatePreview({ candidate }: { candidate: ImportCandidateOut }) {
         <span className="font-medium">Work:</span> {candidate.detected_work_name ?? "—"}
       </div>
       <div>
-        <span className="font-medium">Characters:</span> {candidate.detected_character_names ?? "—"}
+        <span className="font-medium">Characters:</span>{" "}
+        {formatImportCharacterNames(
+          candidate.detected_work_name,
+          candidate.detected_character_names,
+        ) ?? "—"}
       </div>
       <div className="text-muted-foreground">
         {candidate.photo_count}P {candidate.video_count}V · {formatBytes(candidate.total_size_bytes)}
@@ -57,6 +65,8 @@ function CandidatePreview({ candidate }: { candidate: ImportCandidateOut }) {
     </div>
   );
 }
+
+const PAGE_SIZE = 20;
 
 export function ImportWizardClient() {
   const [rootPath, setRootPath] = useState("");
@@ -67,11 +77,38 @@ export function ImportWizardClient() {
   const [committing, setCommitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ImportCommitResult | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
+  const [page, setPage] = useState(1);
 
   const selectedCount = useMemo(
     () => batch?.candidates.filter((candidate) => candidate.status === "selected").length ?? 0,
     [batch],
   );
+
+  const totalPages = Math.max(1, Math.ceil((batch?.candidates.length ?? 0) / PAGE_SIZE));
+
+  const visibleCandidates = useMemo(() => {
+    if (!batch) return [];
+    const start = (page - 1) * PAGE_SIZE;
+    return batch.candidates.slice(start, start + PAGE_SIZE);
+  }, [batch, page]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  function toggleCollapsed(candidateId: number) {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(candidateId)) {
+        next.delete(candidateId);
+      } else {
+        next.add(candidateId);
+        setExpandedId((prevExpanded) => (prevExpanded === candidateId ? null : prevExpanded));
+      }
+      return next;
+    });
+  }
 
   async function handleScan() {
     const trimmedRootPath = rootPath.trim();
@@ -87,6 +124,14 @@ export function ImportWizardClient() {
       const nextBatch = await scanImport(trimmedRootPath, clientFetch);
       setBatch(nextBatch);
       setExpandedId(nextBatch.candidates[0]?.id ?? null);
+      setPage(1);
+      setCollapsedIds(
+        new Set(
+          nextBatch.candidates
+            .filter((c) => c.status === "imported")
+            .map((c) => c.id),
+        ),
+      );
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError ? error.detail : "Failed to scan import directory.",
@@ -144,6 +189,9 @@ export function ImportWizardClient() {
     try {
       const nextResult = await commitBatch(batch.id, clientFetch);
       setResult(nextResult);
+      const importedIds = batch.candidates
+        .filter((c) => c.status === "selected")
+        .map((c) => c.id);
       setBatch((prev) => {
         if (!prev) {
           return prev;
@@ -158,6 +206,13 @@ export function ImportWizardClient() {
               : candidate,
           ),
         };
+      });
+      setCollapsedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of importedIds) {
+          next.add(id);
+        }
+        return next;
       });
     } catch (error) {
       setErrorMessage(
@@ -265,10 +320,45 @@ export function ImportWizardClient() {
 
       {batch && batch.candidates.length > 0 && (
         <div className="space-y-4">
-          {batch.candidates.map((candidate) => {
+          <ImportPagination
+            total={batch.candidates.length}
+            page={page}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+
+          {visibleCandidates.map((candidate) => {
+            const collapsed = collapsedIds.has(candidate.id);
             const expanded = expandedId === candidate.id;
             const selected = candidate.status === "selected";
             const saving = savingCandidateId === candidate.id;
+
+            if (collapsed) {
+              return (
+                <Card key={candidate.id} className="opacity-60">
+                  <CardHeader className="py-3">
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 text-left"
+                      onClick={() => toggleCollapsed(candidate.id)}
+                      aria-label={`Expand ${candidate.folder_name}`}
+                    >
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0 truncate font-semibold">{candidate.folder_name}</span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <CandidateStatusBadge status={candidate.status} />
+                        {candidate.existing_pack_id && (
+                          <Badge variant="destructive" className="gap-1">
+                            <TriangleAlert className="h-3 w-3" />
+                            Existing pack #{candidate.existing_pack_id}
+                          </Badge>
+                        )}
+                      </div>
+                    </button>
+                  </CardHeader>
+                </Card>
+              );
+            }
 
             return (
               <Card key={candidate.id}>
@@ -329,6 +419,13 @@ export function ImportWizardClient() {
               </Card>
             );
           })}
+
+          <ImportPagination
+            total={batch.candidates.length}
+            page={page}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
 
           <ImportCommitBar
             totalCount={batch.candidates.length}

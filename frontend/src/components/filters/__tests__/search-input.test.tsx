@@ -15,6 +15,12 @@ describe("SearchInput", () => {
     push.mockReset();
   });
 
+  it("does not push on initial render", () => {
+    render(<SearchInput placeholder="Search packs..." />);
+
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it("updates URL after debounce and resets page", async () => {
     render(<SearchInput placeholder="Search packs..." />);
 
