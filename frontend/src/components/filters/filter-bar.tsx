@@ -21,6 +21,11 @@ import {
   buildPackFilterSearchParams,
   parsePackFilterParams,
 } from "@/lib/url-params";
+import {
+  formatCharacterDisplayName,
+  formatCharacterMeta,
+  formatOutfitCharacterName,
+} from "@/lib/utils";
 
 function FilterBarContent() {
   const router = useRouter();
@@ -115,8 +120,8 @@ function FilterBarContent() {
         const data = await listCharacters({ page: 1, page_size: 200 }, clientFetch);
         return data.items.map((item) => ({
           id: item.id,
-          name: item.name,
-          meta: item.work_name,
+          name: formatCharacterDisplayName(item.name, item.work_name),
+          meta: formatCharacterMeta(item.name, item.work_name),
         }));
       },
       setSelectedCharacters,
@@ -131,7 +136,7 @@ function FilterBarContent() {
         return data.items.map((item) => ({
           id: item.id,
           name: item.name,
-          meta: item.character_name,
+          meta: formatOutfitCharacterName(item.character_name),
         }));
       },
       setSelectedOutfits,
@@ -268,8 +273,8 @@ function FilterBarContent() {
             );
             return data.items.map((item) => ({
               id: item.id,
-              name: item.name,
-              meta: item.work_name,
+              name: formatCharacterDisplayName(item.name, item.work_name),
+              meta: formatCharacterMeta(item.name, item.work_name),
             }));
           }}
         />
@@ -295,7 +300,7 @@ function FilterBarContent() {
             return data.items.map((item) => ({
               id: item.id,
               name: item.name,
-              meta: item.character_name,
+              meta: formatOutfitCharacterName(item.character_name),
             }));
           }}
         />

@@ -4,6 +4,10 @@ import { serverFetch } from "@/lib/api/client";
 import { getCharacter } from "@/lib/api/characters";
 import { listOutfits } from "@/lib/api/outfits";
 import { listPacks } from "@/lib/api/packs";
+import {
+  formatCharacterDisplayName,
+  formatCharacterMeta,
+} from "@/lib/utils";
 
 export default async function CharacterDetailPage(
   props: PageProps<"/characters/[id]">,
@@ -15,20 +19,28 @@ export default async function CharacterDetailPage(
     listOutfits({ character_id: characterId, page_size: 100 }, serverFetch),
     listPacks({ character_ids: [characterId], page_size: 100 }, serverFetch),
   ]);
+  const displayName = formatCharacterDisplayName(
+    character.name,
+    character.work_name,
+  );
+  const displayMeta = formatCharacterMeta(
+    character.name,
+    character.work_name,
+  );
 
   return (
     <div className="space-y-6">
       <BreadcrumbNav
         items={[
           { label: "Characters", href: "/characters" },
-          { label: character.name },
+          { label: displayName },
         ]}
       />
 
       <section className="rounded-lg border border-border bg-card p-5">
-        <h1 className="text-2xl font-bold">{character.name}</h1>
+        <h1 className="text-2xl font-bold">{displayName}</h1>
         <div className="mt-2 text-sm text-muted-foreground">
-          {character.work_name ?? "No work"} · {character.pack_count} packs
+          {displayMeta ?? "No work"} · {character.pack_count} packs
         </div>
       </section>
 

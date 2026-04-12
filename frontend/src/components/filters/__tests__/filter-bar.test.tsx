@@ -98,4 +98,34 @@ describe("FilterBar", () => {
       expect(lastCall).not.toContain("page=");
     });
   });
+
+  it("formats original placeholder chips naturally", async () => {
+    listCharactersMock.mockResolvedValue({
+      items: [{
+        id: 11,
+        name: "OriginalCharacter",
+        work_name: "原创",
+        pack_count: 1,
+      }],
+    });
+    listOutfitsMock.mockResolvedValue({
+      items: [{
+        id: 21,
+        name: "女仆",
+        character_name: "OriginalCharacter",
+        pack_count: 1,
+      }],
+    });
+
+    searchParamsState.set("character_ids", "11");
+    searchParamsState.set("outfit_ids", "21");
+
+    render(<FilterBar />);
+
+    expect((await screen.findAllByText("原创")).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("OriginalCharacter")).not.toBeInTheDocument();
+
+    searchParamsState.delete("character_ids");
+    searchParamsState.delete("outfit_ids");
+  });
 });

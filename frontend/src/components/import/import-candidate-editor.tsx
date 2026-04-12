@@ -15,6 +15,11 @@ import type {
   ImportCandidateOut,
   ImportCandidateUpdate,
 } from "@/lib/api/types";
+import {
+  ORIGINAL_CHARACTER_NAME,
+  ORIGINAL_WORK_NAME,
+  formatImportCharacterNames,
+} from "@/lib/utils";
 
 interface ImportCandidateEditorProps {
   candidate: ImportCandidateOut;
@@ -31,7 +36,10 @@ export function ImportCandidateEditor({
   const [cosers, setCosers] = useState(candidate.detected_coser_names ?? "");
   const [work, setWork] = useState(candidate.detected_work_name ?? "");
   const [characters, setCharacters] = useState(
-    candidate.detected_character_names ?? "",
+    formatImportCharacterNames(
+      candidate.detected_work_name,
+      candidate.detected_character_names,
+    ) ?? "",
   );
   const [status, setStatus] = useState(candidate.status);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +48,12 @@ export function ImportCandidateEditor({
     setTitle(candidate.detected_title ?? "");
     setCosers(candidate.detected_coser_names ?? "");
     setWork(candidate.detected_work_name ?? "");
-    setCharacters(candidate.detected_character_names ?? "");
+    setCharacters(
+      formatImportCharacterNames(
+        candidate.detected_work_name,
+        candidate.detected_character_names,
+      ) ?? "",
+    );
     setStatus(candidate.status);
     setError(null);
   }, [candidate]);
@@ -50,7 +63,11 @@ export function ImportCandidateEditor({
       title !== (candidate.detected_title ?? "") ||
       cosers !== (candidate.detected_coser_names ?? "") ||
       work !== (candidate.detected_work_name ?? "") ||
-      characters !== (candidate.detected_character_names ?? "") ||
+      characters !==
+        (formatImportCharacterNames(
+          candidate.detected_work_name,
+          candidate.detected_character_names,
+        ) ?? "") ||
       status !== candidate.status,
     [candidate, characters, cosers, status, title, work],
   );
@@ -67,7 +84,10 @@ export function ImportCandidateEditor({
       detected_title: trimmedTitle,
       detected_coser_names: cosers.trim() || null,
       detected_work_name: work.trim() || null,
-      detected_character_names: characters.trim() || null,
+      detected_character_names:
+        work.trim() === ORIGINAL_WORK_NAME
+          ? ORIGINAL_CHARACTER_NAME
+          : characters.trim() || null,
       status,
     });
   }

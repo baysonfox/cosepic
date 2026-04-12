@@ -3,6 +3,10 @@ import { Pagination } from "@/components/filters/pagination";
 import { SearchInput } from "@/components/filters/search-input";
 import { serverFetch } from "@/lib/api/client";
 import { listCharacters } from "@/lib/api/characters";
+import {
+  formatCharacterDisplayName,
+  formatCharacterMeta,
+} from "@/lib/utils";
 
 export default async function CharactersPage({
   searchParams,
@@ -33,18 +37,29 @@ export default async function CharactersPage({
       <SearchInput placeholder="Search characters..." />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {data.items.map((character) => (
-          <Link
-            key={character.id}
-            href={`/characters/${character.id}`}
-            className="rounded-lg border border-border bg-card p-4 transition-colors hover:border-accent"
-          >
-            <div className="font-medium">{character.name}</div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {character.work_name ?? "No work"} · {character.pack_count} packs
-            </div>
-          </Link>
-        ))}
+        {data.items.map((character) => {
+          const displayName = formatCharacterDisplayName(
+            character.name,
+            character.work_name,
+          );
+          const displayMeta = formatCharacterMeta(
+            character.name,
+            character.work_name,
+          );
+
+          return (
+            <Link
+              key={character.id}
+              href={`/characters/${character.id}`}
+              className="rounded-lg border border-border bg-card p-4 transition-colors hover:border-accent"
+            >
+              <div className="font-medium">{displayName}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {(displayMeta ?? "No work")} · {character.pack_count} packs
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
       <Pagination total={data.total} page={page} pageSize={pageSize} />

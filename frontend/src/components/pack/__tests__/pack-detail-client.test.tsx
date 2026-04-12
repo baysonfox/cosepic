@@ -114,6 +114,30 @@ describe("PackDetailClient", () => {
     expect(screen.getByText("Amiya Winter Pack")).toBeInTheDocument();
   });
 
+  it("renders original work placeholder naturally in metadata", () => {
+    render(
+      <PackDetailClient
+        pack={{
+          ...pack,
+          title: "白兔女仆",
+          characters: [
+            {
+              id: 9,
+              name: "OriginalCharacter",
+              work_name: "原创",
+              is_primary: true,
+            },
+          ],
+          outfits: [{ id: 3, name: "女仆", character_name: "OriginalCharacter" }],
+        }}
+        assets={assets}
+      />,
+    );
+
+    expect(screen.getAllByText("原创").length).toBeGreaterThan(0);
+    expect(screen.queryByText("OriginalCharacter")).not.toBeInTheDocument();
+  });
+
   it("saves edited metadata and selected cover", async () => {
     updatePackMock.mockResolvedValue({
       ...pack,

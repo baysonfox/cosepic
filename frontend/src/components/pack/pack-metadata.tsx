@@ -5,6 +5,11 @@ import {
 } from "@/components/entity/chip-selector";
 import { Badge } from "@/components/ui/badge";
 import type { PackOut } from "@/lib/api/types";
+import {
+  formatCharacterDisplayName,
+  formatCharacterMeta,
+  formatOutfitCharacterName,
+} from "@/lib/utils";
 
 interface PackMetadataProps {
   pack: PackOut;
@@ -46,15 +51,22 @@ function MetadataRow({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="flex flex-wrap gap-2">
+    // 稍微拉开标题和标签栏之间的距离 (space-y-2 -> space-y-3)
+    <div className="space-y-3">
+      {/* 放大分类标题的字号 (text-sm -> text-base) */}
+      <div className="text-base font-medium text-muted-foreground">{label}</div>
+      
+      {/* 增加标签之间的间距 (gap-2 -> gap-3) */}
+      <div className="flex flex-wrap gap-3">
         {items.map((item) => {
           const badge = (
-            <Badge variant="secondary" className="gap-1 rounded-md px-2 py-1">
+            // 增加内边距让标签本身变大 (px-2 py-1 -> px-3 py-1.5)
+            // 明确设置基础字号为 text-sm
+            <Badge variant="secondary" className="gap-1.5 rounded-md px-3 py-1.5 text-sm">
               <span>{item.name}</span>
               {item.extra && (
-                <span className="text-[10px] text-muted-foreground">
+                // 放大补充说明的小字 (text-[10px] -> text-xs)
+                <span className="text-xs text-muted-foreground">
                   {item.extra}
                 </span>
               )}
@@ -114,8 +126,8 @@ function mapCosers(pack: PackOut): ChipSelectorItem[] {
 function mapCharacters(pack: PackOut): ChipSelectorItem[] {
   return pack.characters.map((item) => ({
     id: item.id,
-    name: item.name,
-    meta: item.work_name,
+    name: formatCharacterDisplayName(item.name, item.work_name),
+    meta: formatCharacterMeta(item.name, item.work_name),
   }));
 }
 
@@ -123,7 +135,7 @@ function mapOutfits(pack: PackOut): ChipSelectorItem[] {
   return pack.outfits.map((item) => ({
     id: item.id,
     name: item.name,
-    meta: item.character_name,
+    meta: formatOutfitCharacterName(item.character_name),
   }));
 }
 
@@ -209,9 +221,9 @@ export function PackMetadata({
         label="Characters"
         items={pack.characters.map((item) => ({
           id: item.id,
-          name: item.name,
+          name: formatCharacterDisplayName(item.name, item.work_name),
           href: `/characters/${item.id}`,
-          extra: item.work_name,
+          extra: formatCharacterMeta(item.name, item.work_name),
         }))}
       />
 
@@ -220,7 +232,7 @@ export function PackMetadata({
         items={pack.outfits.map((item) => ({
           id: item.id,
           name: item.name,
-          extra: item.character_name,
+          extra: formatOutfitCharacterName(item.character_name),
         }))}
       />
 

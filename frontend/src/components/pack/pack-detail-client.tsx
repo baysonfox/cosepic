@@ -15,6 +15,11 @@ import { listOutfits } from "@/lib/api/outfits";
 import { updatePack } from "@/lib/api/packs";
 import { listTags } from "@/lib/api/tags";
 import type { AssetOut, PackOut, TagOut } from "@/lib/api/types";
+import {
+  formatCharacterDisplayName,
+  formatCharacterMeta,
+  formatOutfitCharacterName,
+} from "@/lib/utils";
 
 interface PackDetailClientProps {
   pack: PackOut;
@@ -43,13 +48,13 @@ function mapPackToDraft(pack: PackOut): PackDraft {
     })),
     characters: pack.characters.map((item) => ({
       id: item.id,
-      name: item.name,
-      meta: item.work_name,
+      name: formatCharacterDisplayName(item.name, item.work_name),
+      meta: formatCharacterMeta(item.name, item.work_name),
     })),
     outfits: pack.outfits.map((item) => ({
       id: item.id,
       name: item.name,
-      meta: item.character_name,
+      meta: formatOutfitCharacterName(item.character_name),
     })),
     tags: pack.tags.map((item) => ({
       id: item.id,
@@ -111,8 +116,8 @@ export function PackDetailClient({
     );
     return data.items.map((item) => ({
       id: item.id,
-      name: item.name,
-      meta: item.work_name,
+      name: formatCharacterDisplayName(item.name, item.work_name),
+      meta: formatCharacterMeta(item.name, item.work_name),
     }));
   }, []);
 
@@ -121,7 +126,7 @@ export function PackDetailClient({
     return data.items.map((item) => ({
       id: item.id,
       name: item.name,
-      meta: item.character_name,
+      meta: formatOutfitCharacterName(item.character_name),
     }));
   }, []);
 

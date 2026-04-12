@@ -41,6 +41,26 @@ describe("PackCard", () => {
     expect(screen.getByText("120P 2V")).toBeInTheDocument();
   });
 
+  it("renders original work placeholder naturally", () => {
+    render(
+      <PackCard
+        pack={{
+          ...pack,
+          title: "白兔女仆",
+          characters: [{
+            id: 9,
+            name: "OriginalCharacter",
+            work_name: "原创",
+            is_primary: true,
+          }],
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("原创")).toHaveLength(1);
+    expect(screen.queryByText("OriginalCharacter")).not.toBeInTheDocument();
+  });
+
   it("links to the pack detail page", () => {
     render(<PackCard pack={pack} />);
     expect(screen.getByRole("link")).toHaveAttribute("href", "/packs/12");

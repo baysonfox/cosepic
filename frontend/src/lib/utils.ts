@@ -1,8 +1,59 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+export const ORIGINAL_WORK_NAME = "原创"
+export const ORIGINAL_CHARACTER_NAME = "OriginalCharacter"
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+export function formatCharacterDisplayName(
+  name: string,
+  workName?: string | null,
+): string {
+  if (
+    name === ORIGINAL_CHARACTER_NAME &&
+    workName === ORIGINAL_WORK_NAME
+  ) {
+    return ORIGINAL_WORK_NAME
+  }
+  return name
+}
+
+export function formatCharacterMeta(
+  name: string,
+  workName?: string | null,
+): string | null {
+  if (
+    name === ORIGINAL_CHARACTER_NAME &&
+    workName === ORIGINAL_WORK_NAME
+  ) {
+    return null
+  }
+  return workName ?? null
+}
+
+export function formatOutfitCharacterName(
+  characterName?: string | null,
+): string | null {
+  if (characterName === ORIGINAL_CHARACTER_NAME) {
+    return ORIGINAL_WORK_NAME
+  }
+  return characterName ?? null
+}
+
+export function formatImportCharacterNames(
+  workName?: string | null,
+  characterNames?: string | null,
+): string | null {
+  if (
+    workName === ORIGINAL_WORK_NAME &&
+    characterNames === ORIGINAL_CHARACTER_NAME
+  ) {
+    return ORIGINAL_WORK_NAME
+  }
+  return characterNames ?? null
 }
 
 /** Format bytes to a human-readable string. */

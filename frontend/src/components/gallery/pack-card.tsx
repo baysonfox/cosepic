@@ -1,8 +1,12 @@
 import Link from "next/link";
 import type { PackListItem } from "@/lib/api/types";
 import { serverThumbnailUrl } from "@/lib/api/assets";
-import { LazyImage } from "@/components/media/lazy-image";
 import { CoserAvatar } from "@/components/entity/coser-avatar";
+import { LazyImage } from "@/components/media/lazy-image";
+import {
+  formatCharacterDisplayName,
+  formatCharacterMeta,
+} from "@/lib/utils";
 
 interface PackCardProps {
   pack: PackListItem;
@@ -11,6 +15,12 @@ interface PackCardProps {
 export function PackCard({ pack }: PackCardProps) {
   const primaryCoser = pack.cosers.find((c) => c.is_primary) ?? pack.cosers[0];
   const primaryChar = pack.characters.find((c) => c.is_primary) ?? pack.characters[0];
+  const primaryCharName = primaryChar
+    ? formatCharacterDisplayName(primaryChar.name, primaryChar.work_name)
+    : null;
+  const primaryCharMeta = primaryChar
+    ? formatCharacterMeta(primaryChar.name, primaryChar.work_name)
+    : null;
 
   const coverSrc = pack.cover_asset_id
     ? serverThumbnailUrl(pack.cover_asset_id)
@@ -46,11 +56,11 @@ export function PackCard({ pack }: PackCardProps) {
           {/* Work / Character info */}
           {primaryChar && (
             <p className="text-xs text-muted-foreground truncate">
-              {primaryChar.work_name && (
-                <span className="text-primary/80">{primaryChar.work_name}</span>
+              {primaryCharMeta && (
+                <span className="text-primary/80">{primaryCharMeta}</span>
               )}
-              {primaryChar.work_name && " · "}
-              {primaryChar.name}
+              {primaryCharMeta && " · "}
+              {primaryCharName}
             </p>
           )}
 
