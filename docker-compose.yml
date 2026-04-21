@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    container_name: cosepic-postgres
+    environment:
+      POSTGRES_USER: cosepic
+      POSTGRES_PASSWORD: cosepic
+      POSTGRES_DB: cosepic
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - cosepic_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cosepic -d cosepic"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  cosepic_pgdata:
