@@ -6,16 +6,19 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import create_db_and_tables
 from app.routers import assets, characters, cosers, imports, outfits, packs, system, tags, tasks, works
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """Startup / shutdown lifecycle."""
+    """Startup / shutdown lifecycle.
+
+    Schema is owned by Alembic — run ``uv run alembic upgrade head`` before
+    starting the app. We intentionally do NOT call ``create_db_and_tables``
+    here to avoid masking Alembic drift under multi-worker deployments.
+    """
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.thumbnail_dir.mkdir(parents=True, exist_ok=True)
-    create_db_and_tables()
     yield
 
 

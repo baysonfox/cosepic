@@ -1,0 +1,29 @@
+"""enable pgvector extension
+
+Revision ID: 0001_enable_pgvector
+Revises:
+Create Date: 2026-04-22
+
+Creates the ``vector`` extension required by pgvector. Must run before any
+migration that declares a ``VECTOR`` column. Kept as a separate revision so
+future pgvector version bumps can live in their own migration.
+"""
+from typing import Sequence, Union
+
+from alembic import op
+
+
+revision: str = "0001_enable_pgvector"
+down_revision: Union[str, Sequence[str], None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Install pgvector."""
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+
+def downgrade() -> None:
+    """Remove pgvector."""
+    op.execute("DROP EXTENSION IF EXISTS vector")
