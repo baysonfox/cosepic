@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     located in the backend directory.
     """
 
-    database_url: str = "sqlite:///data/db.sqlite"
+    database_url: str = "postgresql+psycopg://cosepic:cosepic@127.0.0.1:5432/cosepic"
     data_dir: Path = Path("./data")
     thumbnail_dir: Path = Path("./data/cache/thumbnails")
     thumbnail_width: int = 400
