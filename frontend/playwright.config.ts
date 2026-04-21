@@ -11,7 +11,7 @@ export default defineConfig({
   webServer: [
     {
       command:
-        "sh -lc 'cd ../backend && rm -f playwright.sqlite && env PYTHONPATH=. uv run python scripts/seed_playwright_data.py && env DATABASE_URL=sqlite:///playwright.sqlite DATA_DIR=./playwright_data THUMBNAIL_DIR=./playwright_data/cache/thumbnails uv run uvicorn app.main:app --host 127.0.0.1 --port 8000'",
+        "sh -lc 'cd ../backend && uv run alembic upgrade head && env PYTHONPATH=. DATA_DIR=./playwright_data THUMBNAIL_DIR=./playwright_data/cache/thumbnails uv run python scripts/seed_playwright_data.py && env DATA_DIR=./playwright_data THUMBNAIL_DIR=./playwright_data/cache/thumbnails uv run uvicorn app.main:app --host 127.0.0.1 --port 8000'",
       url: "http://127.0.0.1:8000/api/v1/system/health",
       reuseExistingServer: false,
       timeout: 120000,
