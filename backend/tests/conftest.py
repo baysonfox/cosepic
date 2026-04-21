@@ -1,10 +1,21 @@
-"""Shared test fixtures: in-memory database, test client, factories."""
+"""Shared test fixtures: per-session PostgreSQL test database, transactional
+sessions with savepoint rollback, FastAPI TestClient, and entity factories.
+
+Requires the dev pgvector container from ``docker-compose.yml`` to be running.
+A throwaway database ``cosepic_test_<pid>_<hex>`` is created at session start
+and dropped at teardown; each test runs inside a nested SAVEPOINT that is
+rolled back after the test, giving full isolation without per-test DDL.
+"""
+
+import os
+import secrets
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine as sa_create_engine, text
 from sqlmodel import Session, SQLModel, create_engine
-from sqlmodel.pool import StaticPool
 
+from app.config import settings
 from app.dependencies import get_db
 from app.main import create_app
 from app.models import (  # noqa: F401 — trigger table registration
@@ -26,38 +37,82 @@ from app.models import (  # noqa: F401 — trigger table registration
     Work,
 )
 
+ADMIN_URL = settings.database_url
+TEST_DB_NAME = f"cosepic_test_{os.getpid()}_{secrets.token_hex(4)}"
+TEST_URL = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB_NAME}"
 
-@pytest.fixture(name="engine")
+
+def _create_temp_db() -> None:
+    admin = sa_create_engine(ADMIN_URL, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
+    finally:
+        admin.dispose()
+
+
+def _drop_temp_db() -> None:
+    admin = sa_create_engine(ADMIN_URL, isolation_level="AUTOCOMMIT", pool_pre_ping=True)
+    try:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP DATABASE IF EXISTS "{TEST_DB_NAME}" WITH (FORCE)'))
+    finally:
+        admin.dispose()
+
+
+@pytest.fixture(name="engine", scope="session")
 def fixture_engine():
-    """Create an in-memory SQLite engine for testing."""
-    eng = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    """Create a throwaway PostgreSQL database for the entire test session."""
+    _create_temp_db()
+    eng = create_engine(TEST_URL, pool_pre_ping=True)
+    with eng.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     SQLModel.metadata.create_all(eng)
-    return eng
+    try:
+        yield eng
+    finally:
+        eng.dispose()
+        _drop_temp_db()
 
 
 @pytest.fixture(name="db")
 def fixture_db(engine):
-    """Provide a transactional session that rolls back after each test."""
-    with Session(engine) as session:
+    """Provide a Session bound to a connection inside an outer transaction.
+
+    Tests (and the factory helpers below) call ``session.commit()`` freely;
+    under ``join_transaction_mode="create_savepoint"`` each commit becomes a
+    savepoint release. Rolling back the outer transaction at teardown wipes
+    all per-test mutations without touching DDL.
+    """
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+    try:
         yield session
+    finally:
+        session.close()
+        transaction.rollback()
+        connection.close()
 
 
 @pytest.fixture(name="client")
-def fixture_client(engine):
-    """Provide a TestClient with the DB dependency overridden."""
+def fixture_client(engine, db):
+    """Provide a TestClient that shares the same connection as ``db``.
+
+    The dependency override yields the already-active test session so that
+    request handlers and test assertions see the same savepoint state.
+    """
     app = create_app()
 
     def _override_get_db():
-        with Session(engine) as session:
-            yield session
+        yield db
 
     app.dependency_overrides[get_db] = _override_get_db
-    with TestClient(app) as c:
-        yield c
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
