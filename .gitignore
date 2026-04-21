@@ -16,6 +16,12 @@ env/
 # Thumbnails (generated)
 data/thumbnails/
 
+# Runtime / test artifacts
+backend/data/
+backend/playwright_data/
+frontend/test-results/
+frontend/playwright-report/
+
 # Node
 node_modules/
 .next/
