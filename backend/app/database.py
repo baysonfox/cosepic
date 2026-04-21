@@ -7,12 +7,17 @@ from app.config import settings
 engine = create_engine(
     settings.database_url,
     echo=False,
-    connect_args={"check_same_thread": False},
+    pool_pre_ping=True,
 )
 
 
 def create_db_and_tables() -> None:
-    """Create all tables defined by SQLModel metadata."""
+    """Create all tables defined by SQLModel metadata.
+
+    Dev/test-only helper (used by tests fixtures and the Playwright seed
+    script as a first-run fallback). Production schema is owned by Alembic;
+    run `uv run alembic upgrade head` before starting the app.
+    """
     SQLModel.metadata.create_all(engine)
 
 
