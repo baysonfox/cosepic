@@ -144,6 +144,27 @@ def _insert_seed_data(session: Session) -> None:
     session.add(pack)
     session.commit()
 
+    _advance_sequences(session)
+
+
+def _advance_sequences(session: Session) -> None:
+    """Advance ``assets_id_seq`` past any id we assigned manually.
+
+    SQLite silently re-reads MAX(rowid); PostgreSQL sequences are
+    independent of inserted rows, so hardcoding ``Asset(id=1)`` would
+    leave the sequence at 1 and the next import would collide on
+    ``assets_pkey``. We only seed ``assets.id`` explicitly, so bumping
+    that one sequence is enough.
+    """
+    session.execute(
+        text(
+            "SELECT setval("
+            "pg_get_serial_sequence('assets', 'id'), "
+            "COALESCE((SELECT MAX(id) FROM assets), 0), true)"
+        )
+    )
+    session.commit()
+
 
 def _reset_db(engine) -> None:
     """Hard-reset every application table in the configured database.
