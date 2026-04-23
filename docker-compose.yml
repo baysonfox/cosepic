@@ -9,7 +9,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - cosepic_pgdata:/var/lib/postgresql
+      - cosepic_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cosepic -d cosepic"]
       interval: 5s
