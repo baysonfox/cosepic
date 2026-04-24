@@ -6,6 +6,7 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+from pgvector.psycopg import register_vector
 from PIL import Image
 from sqlmodel import Session, select, text
 
@@ -245,26 +246,33 @@ async def check_pack_duplicates(db: Session, pack_id: int) -> list[dict]:
     threshold = settings.duplicate_similarity_threshold
 
     for sample_asset in sample_assets:
+        if sample_asset.embedding is None:
+            continue
+
         query = text("""
             SELECT
                 a.id as asset_id,
                 a.pack_id,
                 p.title as pack_title,
-                (1 - (embedding <-> :query_embedding) / 2) as similarity
+                (1 - (embedding <-> CAST(:query_embedding AS halfvec)) / 2) as similarity
             FROM assets a
             JOIN packs p ON a.pack_id = p.id
             WHERE
                 a.embedding IS NOT NULL
                 AND a.pack_id != :pack_id
                 AND a.asset_type = 'image'
-            ORDER BY embedding <-> :query_embedding
+            ORDER BY embedding <-> CAST(:query_embedding AS halfvec)
             LIMIT 1
         """)
 
-        result = db.exec(
+        embedding_str = str(sample_asset.embedding)
+        if embedding_str.startswith("HalfVector("):
+            embedding_str = embedding_str[11:-1]
+
+        result = db.execute(
             query,
             {
-                "query_embedding": sample_asset.embedding,
+                "query_embedding": embedding_str,
                 "pack_id": pack_id,
             },
         ).first()
@@ -368,20 +376,20 @@ async def semantic_search(
             a.pack_id,
             a.file_name,
             p.title as pack_title,
-            (1 - (embedding <-> :query_embedding) / 2) as similarity
+            (1 - (embedding <-> CAST(:query_embedding AS halfvec)) / 2) as similarity
         FROM assets a
         JOIN packs p ON a.pack_id = p.id
         WHERE
             a.embedding IS NOT NULL
             AND a.asset_type = 'image'
-        ORDER BY embedding <-> :query_embedding
+        ORDER BY embedding <-> CAST(:query_embedding AS halfvec)
         LIMIT :top_k
     """)
 
-    results = db.exec(
+    results = db.execute(
         query,
         {
-            "query_embedding": query_embedding,
+            "query_embedding": str(query_embedding),
             "top_k": top_k,
         },
     ).all()
