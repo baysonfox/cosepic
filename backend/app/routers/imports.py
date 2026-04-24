@@ -1,6 +1,6 @@
 """Import API routes."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlmodel import Session
 
 from app.dependencies import get_db
@@ -51,9 +51,13 @@ def update_candidate(
 
 
 @router.post("/{batch_id}/commit", response_model=ImportCommitResult)
-def commit_batch(batch_id: int, db: Session = Depends(get_db)):
+async def commit_batch(
+    batch_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """Commit selected candidates — create Packs and relations."""
-    result = import_service.commit_batch(db, batch_id)
+    result = await import_service.commit_batch(db, batch_id, background_tasks)
     if "error" in result:
         raise HTTPException(status_code=404, detail="Batch not found")
     return result

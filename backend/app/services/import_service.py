@@ -3,6 +3,7 @@
 import os
 from datetime import datetime, timezone
 
+from fastapi import BackgroundTasks
 from sqlmodel import Session, select
 
 from app.models.asset import Asset
@@ -14,7 +15,7 @@ from app.models.pack import Pack
 from app.models.relations import PackCharacter, PackCoser, PackOutfit
 from app.models.suggestion import MetadataSuggestion
 from app.models.work import Work
-from app.services import asset_service
+from app.services import asset_service, embedding_service
 from app.services.dir_parser import (
     ORIGINAL_CHARACTER_NAME,
     ORIGINAL_WORK_NAME,
@@ -107,7 +108,11 @@ def update_candidate(
     return candidate
 
 
-def commit_batch(db: Session, batch_id: int) -> dict:
+async def commit_batch(
+    db: Session,
+    batch_id: int,
+    background_tasks: BackgroundTasks,
+) -> dict:
     """Commit selected candidates in a batch — create Packs and relations."""
     batch = db.get(ImportBatch, batch_id)
     if batch is None:
@@ -125,6 +130,8 @@ def commit_batch(db: Session, batch_id: int) -> dict:
     ).all()
 
     pack_ids = []
+    duplicate_checks = []
+
     for candidate in candidates:
         pack_id = _import_single_candidate(db, candidate)
         if pack_id:
@@ -132,13 +139,30 @@ def commit_batch(db: Session, batch_id: int) -> dict:
             candidate.status = "imported"
             db.add(candidate)
 
+            duplicates = await embedding_service.check_pack_duplicates(db, pack_id)
+            if duplicates:
+                duplicate_checks.append({
+                    "pack_id": pack_id,
+                    "duplicates": duplicates,
+                })
+            else:
+                background_tasks.add_task(
+                    embedding_service.process_remaining_embeddings,
+                    db,
+                    pack_id,
+                )
+
     batch.imported_count = len(pack_ids)
     batch.status = "done"
     batch.finished_at = datetime.now(timezone.utc)
     db.add(batch)
     db.commit()
 
-    return {"imported_count": len(pack_ids), "pack_ids": pack_ids}
+    return {
+        "imported_count": len(pack_ids),
+        "pack_ids": pack_ids,
+        "duplicate_checks": duplicate_checks,
+    }
 
 
 def get_batch(db: Session, batch_id: int) -> ImportBatch | None:

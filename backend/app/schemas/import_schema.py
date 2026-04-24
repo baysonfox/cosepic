@@ -62,3 +62,4 @@ class ImportCommitResult(BaseModel):
 
     imported_count: int
     pack_ids: list[int]
+    duplicate_checks: list[dict] = []
