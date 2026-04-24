@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     blurhash_x: int = 4
     blurhash_y: int = 3
 
+    # Embedding API 配置
+    embedding_api_url: str = "https://api.siliconflow.cn/v1/embeddings"
+    embedding_api_key: str = "sk-kevxgsoilpgrzdhjhowcujzjhfjdtaqfvndysxhmafziwsml"
+    embedding_model: str = "Qwen/Qwen3-VL-Embedding-8B"
+    embedding_dimension: int = 2560
+
+    # 去重检测配置
+    duplicate_similarity_threshold: float = 0.85
+    duplicate_sample_count: int = 5
+
+    # 语义搜索配置
+    search_top_k: int = 5
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
