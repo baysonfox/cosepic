@@ -24,10 +24,12 @@ class Settings(BaseSettings):
     blurhash_y: int = 3
 
     # Embedding API 配置
+    embedding_vllm_url: str = "http://localhost:8000/v1/embeddings"
     embedding_api_url: str = "https://api.siliconflow.cn/v1/embeddings"
     embedding_api_key: str = "sk-kevxgsoilpgrzdhjhowcujzjhfjdtaqfvndysxhmafziwsml"
     embedding_model: str = "Qwen/Qwen3-VL-Embedding-8B"
     embedding_dimension: int = 2560
+    embedding_image_max_size: int = 768
 
     # 去重检测配置
     duplicate_similarity_threshold: float = 0.85

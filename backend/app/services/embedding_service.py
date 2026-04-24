@@ -29,6 +29,16 @@ async def generate_image_embedding(image_path: str | Path) -> list[float] | None
             if img.mode != "RGB":
                 img = img.convert("RGB")
 
+            max_size = settings.embedding_image_max_size
+            if img.width > max_size or img.height > max_size:
+                if img.width > img.height:
+                    new_width = max_size
+                    new_height = int(img.height * max_size / img.width)
+                else:
+                    new_height = max_size
+                    new_width = int(img.width * max_size / img.height)
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
             buffer = io.BytesIO()
             img.save(buffer, format="PNG")
             img_bytes = buffer.getvalue()
@@ -37,19 +47,39 @@ async def generate_image_embedding(image_path: str | Path) -> list[float] | None
         data_uri = f"data:image/png;base64,{b64_str}"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                settings.embedding_api_url,
-                headers={
-                    "Authorization": f"Bearer {settings.embedding_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.embedding_model,
-                    "input": [{"image": data_uri}],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = await client.post(
+                    settings.embedding_vllm_url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": settings.embedding_model,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "image_url", "image_url": {"url": data_uri}},
+                                ],
+                            },
+                        ],
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+            except Exception as vllm_error:
+                print(f"vLLM failed, falling back to SiliconFlow: {vllm_error}")
+                response = await client.post(
+                    settings.embedding_api_url,
+                    headers={
+                        "Authorization": f"Bearer {settings.embedding_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.embedding_model,
+                        "input": [{"image": data_uri}],
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
 
         embedding_4096 = np.array(data["data"][0]["embedding"], dtype=np.float32)
         embedding_2560 = embedding_4096[: settings.embedding_dimension]
@@ -76,19 +106,39 @@ async def generate_text_embedding(text: str) -> list[float] | None:
     """
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                settings.embedding_api_url,
-                headers={
-                    "Authorization": f"Bearer {settings.embedding_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.embedding_model,
-                    "input": [{"text": text}],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+            try:
+                response = await client.post(
+                    settings.embedding_vllm_url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": settings.embedding_model,
+                        "messages": [
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": text},
+                                ],
+                            },
+                        ],
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+            except Exception as vllm_error:
+                print(f"vLLM failed, falling back to SiliconFlow: {vllm_error}")
+                response = await client.post(
+                    settings.embedding_api_url,
+                    headers={
+                        "Authorization": f"Bearer {settings.embedding_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.embedding_model,
+                        "input": [{"text": text}],
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
 
         embedding_4096 = np.array(data["data"][0]["embedding"], dtype=np.float32)
         embedding_2560 = embedding_4096[: settings.embedding_dimension]
