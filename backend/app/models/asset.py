@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+from pgvector.sqlalchemy import HALFVEC
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -23,6 +24,10 @@ class Asset(SQLModel, table=True):
     blurhash: str | None = Field(default=None, max_length=64)
     thumbnail_status: str = Field(default="pending", max_length=20)
     sort_index: int = Field(default=0)
+    embedding: list[float] | None = Field(
+        default=None,
+        sa_type=HALFVEC(2560),
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
     )
