@@ -5,6 +5,8 @@ import { ChevronDown, ChevronRight, ChevronUp, TriangleAlert } from "lucide-reac
 import { ImportCandidateEditor } from "@/components/import/import-candidate-editor";
 import { ImportCommitBar } from "@/components/import/import-commit-bar";
 import { ImportPagination } from "@/components/import/import-pagination";
+import { DuplicateComparisonDialog } from "@/components/import/duplicate-comparison-dialog";
+import { EmbeddingStatus } from "@/components/import/embedding-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +23,7 @@ import type {
   ImportCandidateOut,
   ImportCandidateUpdate,
   ImportCommitResult,
+  DuplicateItem,
 } from "@/lib/api/types";
 import {
   formatBytes,
@@ -79,6 +82,9 @@ export function ImportWizardClient() {
   const [result, setResult] = useState<ImportCommitResult | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
+  const [comparisonDialogOpen, setComparisonDialogOpen] = useState(false);
+  const [selectedDuplicate, setSelectedDuplicate] = useState<DuplicateItem | null>(null);
+  const [currentPackTitle, setCurrentPackTitle] = useState("");
 
   const selectedCount = useMemo(
     () => batch?.candidates.filter((candidate) => candidate.status === "selected").length ?? 0,
@@ -108,6 +114,12 @@ export function ImportWizardClient() {
       }
       return next;
     });
+  }
+
+  function openComparisonDialog(dup: DuplicateItem, packTitle: string) {
+    setSelectedDuplicate(dup);
+    setCurrentPackTitle(packTitle);
+    setComparisonDialogOpen(true);
   }
 
   async function handleScan() {
@@ -317,6 +329,64 @@ export function ImportWizardClient() {
           </CardContent>
         </Card>
       )}
+
+      {result && result.imported_count > 0 && (
+        <EmbeddingStatus packCount={result.imported_count} />
+      )}
+
+      {result && result.duplicate_checks && result.duplicate_checks.length > 0 && (
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <TriangleAlert className="h-5 w-5" />
+              检测到可能重复的图包
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {result.duplicate_checks.map(({ pack_id, duplicates }) => {
+              const packIndex = result.pack_ids.indexOf(pack_id);
+              const packTitle = packIndex >= 0 && batch?.candidates[packIndex]
+                ? batch.candidates[packIndex].detected_title || `Pack #${pack_id}`
+                : `Pack #${pack_id}`;
+
+              return (
+                <div key={pack_id} className="space-y-2 rounded-lg border p-3">
+                  <div className="font-medium">{packTitle}</div>
+                  {duplicates.map((dup, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        与 "{dup.duplicate_pack_title}" 相似
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={
+                          dup.max_similarity >= 0.9 ? "destructive" :
+                          dup.max_similarity >= 0.8 ? "default" : "secondary"
+                        }>
+                          {(dup.max_similarity * 100).toFixed(1)}%
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openComparisonDialog(dup, packTitle)}
+                        >
+                          查看对比
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      <DuplicateComparisonDialog
+        open={comparisonDialogOpen}
+        onOpenChange={setComparisonDialogOpen}
+        duplicate={selectedDuplicate}
+        currentPackTitle={currentPackTitle}
+      />
 
       {batch && batch.candidates.length > 0 && (
         <div className="space-y-4">
