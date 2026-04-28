@@ -1,18 +1,36 @@
-"""Embedding API routes — 去重检测和语义搜索."""
+"""Embedding API routes — 去重检测和状态查询."""
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends
+from pydantic import BaseModel
 from sqlmodel import Session
 
 from app.dependencies import get_db
 from app.schemas.embedding import (
     DuplicateCheckRequest,
     DuplicateCheckResponse,
-    SemanticSearchRequest,
-    SemanticSearchResponse,
+    EmbeddingStatsResponse,
 )
 from app.services import embedding_service
 
 router = APIRouter(prefix="/api/v1/embeddings", tags=["embeddings"])
+
+
+class EmbeddingStatusResponse(BaseModel):
+    processing_packs: list[dict]
+
+
+@router.get("/status", response_model=EmbeddingStatusResponse)
+def get_embedding_status(db: Session = Depends(get_db)):
+    """查询正在处理的 Pack 状态."""
+    processing = embedding_service.get_embedding_status(db)
+    return EmbeddingStatusResponse(processing_packs=processing)
+
+
+@router.get("/stats", response_model=EmbeddingStatsResponse)
+def get_embedding_stats(db: Session = Depends(get_db)):
+    """查询 embedding 覆盖统计."""
+    stats = embedding_service.get_embedding_stats(db)
+    return EmbeddingStatsResponse(**stats)
 
 
 @router.post("/check-duplicate", response_model=DuplicateCheckResponse)
@@ -39,29 +57,4 @@ async def check_duplicate(
         pack_id=body.pack_id,
         has_duplicates=len(duplicates) > 0,
         duplicates=duplicates,
-    )
-
-
-@router.post("/search", response_model=SemanticSearchResponse)
-async def semantic_search(
-    body: SemanticSearchRequest,
-    db: Session = Depends(get_db),
-):
-    """基于文本的语义搜索.
-
-    - 输入文本描述
-    - 返回最相似的 topk 张图片及其所属 Pack
-    """
-    results = await embedding_service.semantic_search(
-        db,
-        body.query_text,
-        body.top_k,
-    )
-
-    if not results:
-        raise HTTPException(status_code=404, detail="No results found")
-
-    return SemanticSearchResponse(
-        query_text=body.query_text,
-        results=results,
     )

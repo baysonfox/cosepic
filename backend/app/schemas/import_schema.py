@@ -63,3 +63,11 @@ class ImportCommitResult(BaseModel):
     imported_count: int
     pack_ids: list[int]
     duplicate_checks: list[dict] = []
+
+
+class CancelImportResult(BaseModel):
+    """Result of cancelling a just-imported pack."""
+
+    pack_id: int
+    batch_id: int | None
+    candidate_id: int | None

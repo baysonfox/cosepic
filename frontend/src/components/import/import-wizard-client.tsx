@@ -5,6 +5,8 @@ import { ChevronDown, ChevronRight, ChevronUp, TriangleAlert } from "lucide-reac
 import { ImportCandidateEditor } from "@/components/import/import-candidate-editor";
 import { ImportCommitBar } from "@/components/import/import-commit-bar";
 import { ImportPagination } from "@/components/import/import-pagination";
+import { DuplicateComparisonDialog } from "@/components/import/duplicate-comparison-dialog";
+import { EmbeddingStatus } from "@/components/import/embedding-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ApiError, clientFetch } from "@/lib/api/client";
 import {
+  cancelImport,
   commitBatch,
   scanImport,
   updateCandidate,
@@ -21,6 +24,7 @@ import type {
   ImportCandidateOut,
   ImportCandidateUpdate,
   ImportCommitResult,
+  DuplicateItem,
 } from "@/lib/api/types";
 import {
   formatBytes,
@@ -79,19 +83,31 @@ export function ImportWizardClient() {
   const [result, setResult] = useState<ImportCommitResult | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
+  const [comparisonDialogOpen, setComparisonDialogOpen] = useState(false);
+  const [selectedDuplicate, setSelectedDuplicate] = useState<DuplicateItem | null>(null);
+  const [currentPackTitle, setCurrentPackTitle] = useState("");
+  const [skipDuplicateCheck, setSkipDuplicateCheck] = useState(false);
+  const [showExisting, setShowExisting] = useState(false);
+  const [cancellingPackIds, setCancellingPackIds] = useState<Set<number>>(new Set());
 
   const selectedCount = useMemo(
     () => batch?.candidates.filter((candidate) => candidate.status === "selected").length ?? 0,
     [batch],
   );
 
-  const totalPages = Math.max(1, Math.ceil((batch?.candidates.length ?? 0) / PAGE_SIZE));
+  const { newCandidates, existingCandidates } = useMemo(() => {
+    if (!batch) return { newCandidates: [], existingCandidates: [] };
+    const newOnes = batch.candidates.filter(c => !c.existing_pack_id);
+    const existing = batch.candidates.filter(c => c.existing_pack_id);
+    return { newCandidates: newOnes, existingCandidates: existing };
+  }, [batch]);
+
+  const totalPages = Math.max(1, Math.ceil(newCandidates.length / PAGE_SIZE));
 
   const visibleCandidates = useMemo(() => {
-    if (!batch) return [];
     const start = (page - 1) * PAGE_SIZE;
-    return batch.candidates.slice(start, start + PAGE_SIZE);
-  }, [batch, page]);
+    return newCandidates.slice(start, start + PAGE_SIZE);
+  }, [newCandidates, page]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -108,6 +124,38 @@ export function ImportWizardClient() {
       }
       return next;
     });
+  }
+
+  function openComparisonDialog(dup: DuplicateItem, packTitle: string) {
+    setSelectedDuplicate(dup);
+    setCurrentPackTitle(packTitle);
+    setComparisonDialogOpen(true);
+  }
+
+  async function handleCancelImport(packId: number) {
+    setCancellingPackIds((prev) => new Set(prev).add(packId));
+    try {
+      await cancelImport(packId, clientFetch);
+      setResult((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          imported_count: prev.imported_count - 1,
+          pack_ids: prev.pack_ids.filter((id) => id !== packId),
+          duplicate_checks: prev.duplicate_checks.filter(
+            (dc) => dc.pack_id !== packId,
+          ),
+        };
+      });
+    } catch {
+      setErrorMessage("取消导入失败，请重试");
+    } finally {
+      setCancellingPackIds((prev) => {
+        const next = new Set(prev);
+        next.delete(packId);
+        return next;
+      });
+    }
   }
 
   async function handleScan() {
@@ -187,7 +235,7 @@ export function ImportWizardClient() {
     setCommitting(true);
     setErrorMessage(null);
     try {
-      const nextResult = await commitBatch(batch.id, clientFetch);
+      const nextResult = await commitBatch(batch.id, clientFetch, skipDuplicateCheck);
       setResult(nextResult);
       const importedIds = batch.candidates
         .filter((c) => c.status === "selected")
@@ -318,10 +366,86 @@ export function ImportWizardClient() {
         </Card>
       )}
 
-      {batch && batch.candidates.length > 0 && (
+      {result && result.imported_count > 0 && (
+        <EmbeddingStatus
+          packIds={result.pack_ids}
+          onComplete={() => setResult(null)}
+        />
+      )}
+
+      {result && result.duplicate_checks && result.duplicate_checks.length > 0 && (
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <TriangleAlert className="h-5 w-5" />
+              检测到可能重复的图包
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {result.duplicate_checks.map(({ pack_id, duplicates }) => {
+              const selectedCandidates = batch?.candidates.filter(
+                c => c.status === "selected",
+              ) ?? [];
+              const packIndex = result.pack_ids.indexOf(pack_id);
+              const packTitle = packIndex >= 0 && selectedCandidates[packIndex]
+                ? selectedCandidates[packIndex].detected_title || selectedCandidates[packIndex].folder_name
+                : `Pack #${pack_id}`;
+
+              const isCancelling = cancellingPackIds.has(pack_id);
+
+              return (
+                <div key={pack_id} className="space-y-2 rounded-lg border p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium">{packTitle}</div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={isCancelling}
+                      onClick={() => handleCancelImport(pack_id)}
+                    >
+                      {isCancelling ? "取消中..." : "取消导入"}
+                    </Button>
+                  </div>
+                  {duplicates.map((dup, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        与 "{dup.duplicate_pack_title}" 相似
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={
+                          dup.max_similarity >= 0.9 ? "destructive" :
+                          dup.max_similarity >= 0.8 ? "default" : "secondary"
+                        }>
+                          {(dup.max_similarity * 100).toFixed(1)}%
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openComparisonDialog(dup, packTitle)}
+                        >
+                          查看对比
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      <DuplicateComparisonDialog
+        open={comparisonDialogOpen}
+        onOpenChange={setComparisonDialogOpen}
+        duplicate={selectedDuplicate}
+        currentPackTitle={currentPackTitle}
+      />
+
+      {batch && newCandidates.length > 0 && (
         <div className="space-y-4">
           <ImportPagination
-            total={batch.candidates.length}
+            total={newCandidates.length}
             page={page}
             pageSize={PAGE_SIZE}
             onPageChange={setPage}
@@ -421,17 +545,51 @@ export function ImportWizardClient() {
           })}
 
           <ImportPagination
-            total={batch.candidates.length}
+            total={newCandidates.length}
             page={page}
             pageSize={PAGE_SIZE}
             onPageChange={setPage}
           />
 
+          {existingCandidates.length > 0 && (
+            <Card className="border-muted">
+              <CardHeader>
+                <button
+                  type="button"
+                  onClick={() => setShowExisting(!showExisting)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    已存在的图包 ({existingCandidates.length})
+                  </CardTitle>
+                  <ChevronRight className={`h-4 w-4 transition-transform ${showExisting ? "rotate-90" : ""}`} />
+                </button>
+              </CardHeader>
+              {showExisting && (
+                <CardContent className="space-y-3">
+                  {existingCandidates.map((candidate) => (
+                    <div key={candidate.id} className="rounded-lg border p-3 opacity-60">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium">{candidate.folder_name}</span>
+                        <Badge variant="destructive" className="gap-1">
+                          <TriangleAlert className="h-3 w-3" />
+                          Existing pack #{candidate.existing_pack_id}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              )}
+            </Card>
+          )}
+
           <ImportCommitBar
-            totalCount={batch.candidates.length}
+            totalCount={newCandidates.length}
             selectedCount={selectedCount}
             committing={committing}
             disabled={savingCandidateId !== null}
+            skipDuplicateCheck={skipDuplicateCheck}
+            onSkipDuplicateCheckChange={setSkipDuplicateCheck}
             onSelectAll={() => void handleSelectAll()}
             onClear={() => void handleClearSelection()}
             onCommit={() => void handleCommit()}

@@ -227,28 +227,150 @@ def update_pack(
 
 
 def delete_pack(db: Session, pack_id: int) -> bool | str:
-    """Delete a Pack and cascade-delete Assets, relations, suggestions."""
+    """Delete a Pack and cascade-delete Assets, relations, suggestions.
+
+    Also cleans up orphaned entities (Coser, Character, Outfit, Work) that
+    have no remaining pack links after the relations are removed.
+    """
     from app.models.asset import Asset
+    from app.models.coser import CoserAlias
+    from app.models.duplicate_check import PackDuplicateCheck
+    from app.models.import_batch import ImportCandidate
     from app.models.suggestion import MetadataSuggestion
+    from app.models.task import Task
 
     pack = db.get(Pack, pack_id)
     if pack is None:
         return "not_found"
 
+    # Collect affected entity IDs before deleting relations
+    coser_ids = [
+        r.coser_id for r in db.exec(
+            select(PackCoser).where(PackCoser.pack_id == pack_id)
+        ).all()
+    ]
+    character_ids = [
+        r.character_id for r in db.exec(
+            select(PackCharacter).where(PackCharacter.pack_id == pack_id)
+        ).all()
+    ]
+    outfit_ids = [
+        r.outfit_id for r in db.exec(
+            select(PackOutfit).where(PackOutfit.pack_id == pack_id)
+        ).all()
+    ]
+
     # Delete relations
     for model in (PackCoser, PackCharacter, PackOutfit, PackTag):
         for link in db.exec(select(model).where(model.pack_id == pack_id)).all():
             db.delete(link)
+    db.flush()
 
     # Delete suggestions
-    for s in db.exec(select(MetadataSuggestion).where(MetadataSuggestion.pack_id == pack_id)).all():
+    for s in db.exec(
+        select(MetadataSuggestion).where(MetadataSuggestion.pack_id == pack_id)
+    ).all():
         db.delete(s)
+
+    # Delete duplicate checks (both directions)
+    for dc in db.exec(
+        select(PackDuplicateCheck).where(
+            (PackDuplicateCheck.pack_id == pack_id)
+            | (PackDuplicateCheck.duplicate_pack_id == pack_id)
+        )
+    ).all():
+        db.delete(dc)
+
+    # Null stale references in import candidates
+    for ic in db.exec(
+        select(ImportCandidate).where(ImportCandidate.existing_pack_id == pack_id)
+    ).all():
+        ic.existing_pack_id = None
+        db.add(ic)
+
+    # Delete tasks referencing this pack
+    for t in db.exec(
+        select(Task).where(Task.target_type == "pack", Task.target_id == pack_id)
+    ).all():
+        db.delete(t)
+
+    # Collect asset IDs and clear external asset references
+    asset_ids = list(
+        db.exec(select(Asset.id).where(Asset.pack_id == pack_id)).all()
+    )
+    if asset_ids:
+        for coser in db.exec(
+            select(Coser).where(Coser.avatar_asset_id.in_(asset_ids))
+        ).all():
+            coser.avatar_asset_id = None
+            db.add(coser)
+
+    # Clear cover reference before deleting assets
+    pack.cover_asset_id = None
+    db.add(pack)
+    db.flush()
 
     # Delete assets
     for asset in db.exec(select(Asset).where(Asset.pack_id == pack_id)).all():
         db.delete(asset)
 
     db.delete(pack)
+    db.flush()
+
+    # Clean up orphaned outfits
+    for oid in outfit_ids:
+        remaining = db.exec(
+            select(PackOutfit).where(PackOutfit.outfit_id == oid).limit(1)
+        ).first()
+        if remaining is None:
+            outfit = db.get(Outfit, oid)
+            if outfit:
+                db.delete(outfit)
+
+    # Clean up orphaned characters, then works
+    for cid in character_ids:
+        remaining = db.exec(
+            select(PackCharacter).where(PackCharacter.character_id == cid).limit(1)
+        ).first()
+        if remaining is None:
+            character = db.get(Character, cid)
+            if character:
+                work_id = character.work_id
+                # Delete any remaining outfits of this character
+                for o in db.exec(
+                    select(Outfit).where(Outfit.character_id == cid)
+                ).all():
+                    o_remaining = db.exec(
+                        select(PackOutfit).where(PackOutfit.outfit_id == o.id).limit(1)
+                    ).first()
+                    if o_remaining is None:
+                        db.delete(o)
+                db.delete(character)
+                db.flush()
+                # Check if work is orphaned
+                if work_id:
+                    work_remaining = db.exec(
+                        select(Character).where(Character.work_id == work_id).limit(1)
+                    ).first()
+                    if work_remaining is None:
+                        work = db.get(Work, work_id)
+                        if work:
+                            db.delete(work)
+
+    # Clean up orphaned cosers
+    for cid in coser_ids:
+        remaining = db.exec(
+            select(PackCoser).where(PackCoser.coser_id == cid).limit(1)
+        ).first()
+        if remaining is None:
+            coser = db.get(Coser, cid)
+            if coser:
+                for alias in db.exec(
+                    select(CoserAlias).where(CoserAlias.coser_id == cid)
+                ).all():
+                    db.delete(alias)
+                db.delete(coser)
+
     db.commit()
     return True
 

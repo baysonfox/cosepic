@@ -5,6 +5,7 @@ from sqlmodel import Session
 
 from app.dependencies import get_db
 from app.schemas.import_schema import (
+    CancelImportResult,
     ImportBatchOut,
     ImportCandidateOut,
     ImportCandidateUpdate,
@@ -54,12 +55,24 @@ def update_candidate(
 async def commit_batch(
     batch_id: int,
     background_tasks: BackgroundTasks,
+    skip_duplicate_check: bool = False,
     db: Session = Depends(get_db),
 ):
     """Commit selected candidates — create Packs and relations."""
-    result = await import_service.commit_batch(db, batch_id, background_tasks)
+    result = await import_service.commit_batch(db, batch_id, background_tasks, skip_duplicate_check)
     if "error" in result:
         raise HTTPException(status_code=404, detail="Batch not found")
+    return result
+
+
+@router.delete("/packs/{pack_id}/cancel", response_model=CancelImportResult)
+def cancel_import(pack_id: int, db: Session = Depends(get_db)):
+    """Cancel a just-imported pack — revert its candidate and delete the pack."""
+    result = import_service.cancel_import_pack(db, pack_id)
+    if "error" in result:
+        if result["error"] == "not_found":
+            raise HTTPException(status_code=404, detail="Pack not found")
+        raise HTTPException(status_code=500, detail="Failed to cancel import")
     return result
 
 

@@ -27,25 +27,22 @@ class DuplicateCheckResponse(BaseModel):
     duplicates: list[DuplicateItem] = []
 
 
-class SemanticSearchRequest(BaseModel):
-    """语义搜索请求."""
+class EmbeddingStatsItem(BaseModel):
+    """单个 Pack 的 embedding 状态."""
 
-    query_text: str = Field(..., min_length=1, max_length=500)
-    top_k: int | None = Field(default=None, ge=1, le=50)
-
-
-class SearchResultItem(BaseModel):
-    """单个搜索结果."""
-
-    asset_id: int
     pack_id: int
     pack_title: str
-    file_name: str
-    similarity: float = Field(..., ge=0.0, le=1.0)
+    total_images: int
+    processed_images: int | None = None
+    progress: float | None = None
 
 
-class SemanticSearchResponse(BaseModel):
-    """语义搜索响应."""
+class EmbeddingStatsResponse(BaseModel):
+    """Embedding 覆盖统计."""
 
-    query_text: str
-    results: list[SearchResultItem]
+    total_packs: int
+    total_assets: int
+    embeddings_count: int
+    completed_packs: int
+    incomplete_packs: list[EmbeddingStatsItem] = []
+    no_embedding_packs: list[EmbeddingStatsItem] = []

@@ -97,8 +97,8 @@ def parse_dir_name(raw: str) -> DirParseResult | None:
                     outfit=outfit_name if outfit_name else None,
                 ))
 
-    # 5. Build title from characters part
-    title = characters_part
+    # 5. Build title from all parts
+    title = f"{cosers_part} - {work_part} - {characters_part}"
 
     return DirParseResult(
         coser_names=coser_names,

@@ -1,12 +1,15 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ImportCommitBarProps {
   totalCount: number;
   selectedCount: number;
   committing: boolean;
   disabled?: boolean;
+  skipDuplicateCheck: boolean;
+  onSkipDuplicateCheckChange: (checked: boolean) => void;
   onSelectAll: () => void;
   onClear: () => void;
   onCommit: () => Promise<void> | void;
@@ -17,6 +20,8 @@ export function ImportCommitBar({
   selectedCount,
   committing,
   disabled = false,
+  skipDuplicateCheck,
+  onSkipDuplicateCheckChange,
   onSelectAll,
   onClear,
   onCommit,
@@ -31,6 +36,14 @@ export function ImportCommitBar({
           <Button type="button" variant="outline" onClick={onClear} disabled={disabled}>
             Clear Selection
           </Button>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={skipDuplicateCheck}
+              onCheckedChange={onSkipDuplicateCheckChange}
+              disabled={disabled || committing}
+            />
+            <span>跳过重复检查</span>
+          </label>
         </div>
 
         <div className="flex items-center gap-3">

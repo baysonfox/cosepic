@@ -257,6 +257,24 @@ export interface ImportBatchOut {
 export interface ImportCommitResult {
   imported_count: number;
   pack_ids: number[];
+  duplicate_checks: Array<{
+    pack_id: number;
+    duplicates: DuplicateItem[];
+  }>;
+}
+
+export interface CancelImportResult {
+  pack_id: number;
+  batch_id: number | null;
+  candidate_id: number | null;
+}
+
+export interface DuplicateItem {
+  duplicate_pack_id: number;
+  duplicate_pack_title: string;
+  max_similarity: number;
+  matched_asset_id: number;
+  duplicate_asset_id: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -301,4 +319,43 @@ export interface PackFilterParams {
   order?: string;
   page?: number;
   page_size?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Embedding
+// ---------------------------------------------------------------------------
+
+export interface DuplicateCheckResult {
+  pack_id: number;
+  has_duplicates: boolean;
+  duplicates: DuplicateItem[];
+}
+
+export interface EmbeddingStatus {
+  processing_packs: Array<{
+    pack_id: number;
+    pack_title: string;
+    total_images: number;
+    processed_images: number;
+    progress: number;
+  }>;
+}
+
+export interface EmbeddingStats {
+  total_packs: number;
+  total_assets: number;
+  embeddings_count: number;
+  completed_packs: number;
+  incomplete_packs: Array<{
+    pack_id: number;
+    pack_title: string;
+    total_images: number;
+    processed_images: number;
+    progress: number;
+  }>;
+  no_embedding_packs: Array<{
+    pack_id: number;
+    pack_title: string;
+    total_images: number;
+  }>;
 }

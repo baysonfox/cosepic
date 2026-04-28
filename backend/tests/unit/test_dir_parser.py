@@ -88,17 +88,17 @@ class TestEdgeCases:
         r = parse_dir_name("Coser - Work - Char - Extra 10p")
         assert r is not None
         assert r.characters[0].name == "Char"
-        assert r.title == "Char - Extra"
+        assert r.title == "Coser - Work - Char - Extra"
 
-    def test_title_equals_characters_part(self):
+    def test_title_includes_full_context(self):
         r = parse_dir_name("Coser - Work - Kafka 泳装 12p")
-        assert r.title == "Kafka 泳装"
+        assert r.title == "Coser - Work - Kafka 泳装"
 
     def test_original_work_uses_original_character_placeholder(self):
         r = parse_dir_name("Coser - 原创 - 白兔女仆 12p")
         assert r is not None
         assert r.work_name == "原创"
-        assert r.title == "白兔女仆"
+        assert r.title == "Coser - 原创 - 白兔女仆"
         assert r.characters == [CharacterParsed(name="OriginalCharacter")]
 
     def test_whitespace_handling(self):

@@ -160,9 +160,11 @@ function FilterBarContent() {
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="space-y-3">
         <SearchInput placeholder="Search packs..." />
+      </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Select
           value={searchParams.get("has_video") ?? "all"}
           onValueChange={(value) => setParam("has_video", value)}

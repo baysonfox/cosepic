@@ -1,4 +1,4 @@
-"""Embedding service — 图片向量化和相似度搜索."""
+"""Embedding service — 图片向量化和去重检测."""
 
 import base64
 import io
@@ -6,9 +6,8 @@ from pathlib import Path
 
 import httpx
 import numpy as np
-from pgvector.psycopg import register_vector
 from PIL import Image
-from sqlmodel import Session, select, text
+from sqlmodel import Session, func, select, text
 
 from app.config import settings
 from app.models.asset import Asset
@@ -93,65 +92,6 @@ async def generate_image_embedding(image_path: str | Path) -> list[float] | None
 
     except Exception as e:
         print(f"Error generating embedding for {image_path}: {e}")
-        return None
-
-
-async def generate_text_embedding(text: str) -> list[float] | None:
-    """为文本生成 embedding 向量.
-
-    Args:
-        text: 搜索文本
-
-    Returns:
-        2560 维的 embedding 向量，失败返回 None
-    """
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                response = await client.post(
-                    settings.embedding_vllm_url,
-                    headers={"Content-Type": "application/json"},
-                    json={
-                        "model": settings.embedding_model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": text},
-                                ],
-                            },
-                        ],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-            except Exception as vllm_error:
-                print(f"vLLM failed, falling back to SiliconFlow: {vllm_error}")
-                response = await client.post(
-                    settings.embedding_api_url,
-                    headers={
-                        "Authorization": f"Bearer {settings.embedding_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": settings.embedding_model,
-                        "input": [{"text": text}],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-
-        embedding_4096 = np.array(data["data"][0]["embedding"], dtype=np.float32)
-        embedding_2560 = embedding_4096[: settings.embedding_dimension]
-
-        norm = np.linalg.norm(embedding_2560)
-        if norm > 0:
-            embedding_2560 = embedding_2560 / norm
-
-        return embedding_2560.tolist()
-
-    except Exception as e:
-        print(f"Error generating text embedding: {e}")
         return None
 
 
@@ -348,59 +288,87 @@ async def process_remaining_embeddings(db: Session, pack_id: int) -> dict:
     return {"processed": processed, "failed": failed}
 
 
-async def semantic_search(
-    db: Session,
-    query_text: str,
-    top_k: int | None = None,
-) -> list[dict]:
-    """基于文本的语义搜索.
-
-    Args:
-        db: 数据库会话
-        query_text: 搜索文本
-        top_k: 返回结果数量
-
-    Returns:
-        搜索结果列表
-    """
-    if top_k is None:
-        top_k = settings.search_top_k
-
-    query_embedding = await generate_text_embedding(query_text)
-    if query_embedding is None:
-        return []
-
-    query = text("""
-        SELECT
-            a.id as asset_id,
-            a.pack_id,
-            a.file_name,
-            p.title as pack_title,
-            (1 - (embedding <-> CAST(:query_embedding AS halfvec)) / 2) as similarity
-        FROM assets a
-        JOIN packs p ON a.pack_id = p.id
-        WHERE
-            a.embedding IS NOT NULL
-            AND a.asset_type = 'image'
-        ORDER BY embedding <-> CAST(:query_embedding AS halfvec)
-        LIMIT :top_k
-    """)
-
-    results = db.execute(
-        query,
-        {
-            "query_embedding": str(query_embedding),
-            "top_k": top_k,
-        },
+def get_embedding_status(db: Session) -> list[dict]:
+    """查询正在处理的 Pack（有部分 Asset 没有 embedding）."""
+    result = db.exec(
+        text("""
+            SELECT
+                p.id as pack_id,
+                p.title as pack_title,
+                COUNT(a.id) as total_images,
+                COUNT(a.embedding) as processed_images
+            FROM packs p
+            JOIN assets a ON a.pack_id = p.id AND a.asset_type = 'image'
+            GROUP BY p.id, p.title
+            HAVING COUNT(a.embedding) < COUNT(a.id) AND COUNT(a.embedding) > 0
+        """)
     ).all()
 
     return [
         {
-            "asset_id": r.asset_id,
-            "pack_id": r.pack_id,
-            "pack_title": r.pack_title,
-            "file_name": r.file_name,
-            "similarity": r.similarity,
+            "pack_id": row[0],
+            "pack_title": row[1],
+            "total_images": row[2],
+            "processed_images": row[3],
+            "progress": row[3] / row[2] if row[2] > 0 else 0,
         }
-        for r in results
+        for row in result
     ]
+
+
+def get_embedding_stats(db: Session) -> dict:
+    """查询 embedding 覆盖统计."""
+    total_packs = db.exec(select(Pack)).all()
+
+    # Aggregate asset-level stats
+    total_assets = db.exec(
+        select(func.count()).where(Asset.asset_type == "image")
+    ).one()
+    total_embeddings = db.exec(
+        select(func.count()).where(
+            Asset.asset_type == "image",
+            Asset.embedding is not None,
+        )
+    ).one()
+
+    stats = {
+        "total_packs": len(total_packs),
+        "total_assets": total_assets,
+        "embeddings_count": total_embeddings,
+        "completed_packs": 0,
+        "incomplete_packs": [],
+        "no_embedding_packs": [],
+    }
+
+    for pack in total_packs:
+        assets = db.exec(
+            select(Asset).where(
+                Asset.pack_id == pack.id,
+                Asset.asset_type == "image",
+            )
+        ).all()
+
+        if not assets:
+            continue
+
+        total = len(assets)
+        with_embedding = sum(1 for a in assets if a.embedding is not None)
+
+        if with_embedding == total:
+            stats["completed_packs"] += 1
+        elif with_embedding == 0:
+            stats["no_embedding_packs"].append({
+                "pack_id": pack.id,
+                "pack_title": pack.title,
+                "total_images": total,
+            })
+        else:
+            stats["incomplete_packs"].append({
+                "pack_id": pack.id,
+                "pack_title": pack.title,
+                "total_images": total,
+                "processed_images": with_embedding,
+                "progress": with_embedding / total,
+            })
+
+    return stats

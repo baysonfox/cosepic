@@ -112,6 +112,7 @@ async def commit_batch(
     db: Session,
     batch_id: int,
     background_tasks: BackgroundTasks,
+    skip_duplicate_check: bool = False,
 ) -> dict:
     """Commit selected candidates in a batch — create Packs and relations."""
     batch = db.get(ImportBatch, batch_id)
@@ -139,18 +140,25 @@ async def commit_batch(
             candidate.status = "imported"
             db.add(candidate)
 
-            duplicates = await embedding_service.check_pack_duplicates(db, pack_id)
-            if duplicates:
-                duplicate_checks.append({
-                    "pack_id": pack_id,
-                    "duplicates": duplicates,
-                })
-            else:
+            if skip_duplicate_check:
                 background_tasks.add_task(
                     embedding_service.process_remaining_embeddings,
                     db,
                     pack_id,
                 )
+            else:
+                duplicates = await embedding_service.check_pack_duplicates(db, pack_id)
+                if duplicates:
+                    duplicate_checks.append({
+                        "pack_id": pack_id,
+                        "duplicates": duplicates,
+                    })
+                else:
+                    background_tasks.add_task(
+                        embedding_service.process_remaining_embeddings,
+                        db,
+                        pack_id,
+                    )
 
     batch.imported_count = len(pack_ids)
     batch.status = "done"
@@ -168,6 +176,50 @@ async def commit_batch(
 def get_batch(db: Session, batch_id: int) -> ImportBatch | None:
     """Return a batch with its candidates."""
     return db.get(ImportBatch, batch_id)
+
+
+def cancel_import_pack(db: Session, pack_id: int) -> dict:
+    """Cancel a just-imported pack — delete it and revert its candidate.
+
+    Returns the batch_id and candidate_id so the frontend can update state.
+    """
+    from app.services import pack_service
+
+    pack = db.get(Pack, pack_id)
+    if pack is None:
+        return {"error": "not_found"}
+
+    # Find the matching import candidate by folder path
+    candidate = db.exec(
+        select(ImportCandidate).where(
+            ImportCandidate.folder_path == pack.dir_path,
+            ImportCandidate.status == "imported",
+        )
+    ).first()
+
+    batch_id = candidate.batch_id if candidate else None
+
+    if candidate:
+        candidate.status = "selected"
+        db.add(candidate)
+
+    # Decrement batch imported_count
+    if batch_id:
+        batch = db.get(ImportBatch, batch_id)
+        if batch and batch.imported_count > 0:
+            batch.imported_count -= 1
+            db.add(batch)
+
+    # Let delete_pack handle commit — candidate/batch changes ride along
+    result = pack_service.delete_pack(db, pack_id)
+    if result != True:
+        return {"error": result}
+
+    return {
+        "pack_id": pack_id,
+        "batch_id": batch_id,
+        "candidate_id": candidate.id if candidate else None,
+    }
 
 
 def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | None:
