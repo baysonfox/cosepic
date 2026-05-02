@@ -36,7 +36,7 @@ def _process_single_image(
 
     thumb_dir = settings.thumbnail_dir
     thumb_dir.mkdir(parents=True, exist_ok=True)
-    thumb_path = thumb_dir / f"{asset_id}.avif"
+    thumb_path = thumb_dir / f"{asset_id}.webp"
 
     if thumbnail_service._is_valid_thumbnail(thumb_path, source):
         # 缩略图已存在，只需补 BlurHash
@@ -152,5 +152,5 @@ def get_asset_file_path(db: Session, asset_id: int) -> Path | None:
 
 def get_asset_thumbnail_path(asset_id: int) -> Path | None:
     """Return the thumbnail path for an asset, if it exists."""
-    path = settings.thumbnail_dir / f"{asset_id}.avif"
+    path = settings.thumbnail_dir / f"{asset_id}.webp"
     return path if path.is_file() else None

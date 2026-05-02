@@ -44,7 +44,7 @@ def generate_thumbnail(
 
     thumb_dir = settings.thumbnail_dir
     thumb_dir.mkdir(parents=True, exist_ok=True)
-    thumb_path = thumb_dir / f"{asset_id}.avif"
+    thumb_path = thumb_dir / f"{asset_id}.webp"
 
     if _is_valid_thumbnail(thumb_path, source):
         return thumb_path
@@ -58,7 +58,7 @@ def generate_thumbnail(
                 (settings.thumbnail_width, new_height),
                 Image.BILINEAR,
             )
-            img.save(thumb_path, format="AVIF", quality=settings.thumbnail_quality)
+            img.save(thumb_path, format="WebP", quality=settings.thumbnail_quality)
         return thumb_path
     except Exception:
         return None
