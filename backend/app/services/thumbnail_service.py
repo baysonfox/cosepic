@@ -56,7 +56,7 @@ def generate_thumbnail(
             new_height = int(img.height * ratio)
             img = img.resize(
                 (settings.thumbnail_width, new_height),
-                Image.LANCZOS,
+                Image.BILINEAR,
             )
             img.save(thumb_path, format="AVIF", quality=settings.thumbnail_quality)
         return thumb_path
@@ -73,7 +73,23 @@ def compute_blurhash(source_path: str | Path) -> str | None:
     try:
         with Image.open(source) as img:
             img = img.convert("RGB")
-            img = img.resize((100, 100), Image.LANCZOS)
+            img = img.resize((100, 100), Image.BILINEAR)
             return bh.encode(np.array(img), settings.blurhash_x, settings.blurhash_y)
+    except Exception:
+        return None
+
+
+def compute_blurhash_from_image(img: Image.Image) -> str | None:
+    """从已加载的 PIL Image 直接计算 BlurHash，避免二次解码.
+
+    Args:
+        img: 已转为 RGB 的 PIL Image（会被 resize 到 100x100）
+
+    Returns:
+        BlurHash 字符串，失败返回 None
+    """
+    try:
+        small = img.resize((100, 100), Image.BILINEAR)
+        return bh.encode(np.array(small), settings.blurhash_x, settings.blurhash_y)
     except Exception:
         return None

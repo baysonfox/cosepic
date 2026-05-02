@@ -4,6 +4,7 @@ import os
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+from PIL import Image
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -17,6 +18,8 @@ def _process_single_image(
 ) -> tuple[int, str | None, str | None]:
     """处理单张图片：生成缩略图 + 计算 BlurHash（供子进程调用）.
 
+    只打开解码一次源图，缩略图和 BlurHash 共用已加载的图像.
+
     Args:
         args: (source_path, asset_id)
 
@@ -24,16 +27,51 @@ def _process_single_image(
         (asset_id, thumbnail_status, blurhash)
     """
     source_path, asset_id = args
+    source = Path(source_path)
     thumb_status = None
     blurhash = None
 
-    result = thumbnail_service.generate_thumbnail(source_path, asset_id)
-    if result is not None:
-        thumb_status = "generated"
-    else:
-        thumb_status = "failed"
+    if not source.is_file():
+        return (asset_id, None, None)
 
-    blurhash = thumbnail_service.compute_blurhash(source_path)
+    thumb_dir = settings.thumbnail_dir
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    thumb_path = thumb_dir / f"{asset_id}.avif"
+
+    if thumbnail_service._is_valid_thumbnail(thumb_path, source):
+        # 缩略图已存在，只需补 BlurHash
+        try:
+            with Image.open(thumb_path) as thumb:
+                blurhash = thumbnail_service.compute_blurhash_from_image(
+                    thumb.convert("RGB"),
+                )
+        except Exception:
+            pass
+        return (asset_id, "generated", blurhash)
+
+    try:
+        with Image.open(source) as img:
+            img = img.convert("RGB")
+
+            # 缩放到缩略图尺寸
+            ratio = settings.thumbnail_width / img.width
+            new_height = int(img.height * ratio)
+            thumb = img.resize(
+                (settings.thumbnail_width, new_height),
+                Image.BILINEAR,
+            )
+
+            # 保存缩略图
+            thumb.save(thumb_path, format="AVIF", quality=settings.thumbnail_quality)
+            thumb_status = "generated"
+
+            # 用已缩放的缩略图计算 BlurHash（无需再次打开源文件）
+            blurhash = thumbnail_service.compute_blurhash_from_image(thumb)
+
+    except Exception:
+        thumb_status = "failed"
+        # 即使缩略图失败，仍尝试通过源文件计算 BlurHash
+        blurhash = thumbnail_service.compute_blurhash(source_path)
 
     return (asset_id, thumb_status, blurhash)
 
