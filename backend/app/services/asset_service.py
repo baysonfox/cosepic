@@ -51,7 +51,8 @@ def _process_single_image(
 
     try:
         with Image.open(source) as img:
-            img = img.convert("RGB")
+            if img.mode != "RGB":
+                img = img.convert("RGB")
 
             # 缩放到缩略图尺寸
             ratio = settings.thumbnail_width / img.width
@@ -59,6 +60,7 @@ def _process_single_image(
             thumb = img.resize(
                 (settings.thumbnail_width, new_height),
                 Image.BILINEAR,
+                reducing_gap=3.0,
             )
 
             # 保存缩略图

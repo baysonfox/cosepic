@@ -51,12 +51,14 @@ def generate_thumbnail(
 
     try:
         with Image.open(source) as img:
-            img = img.convert("RGB")
+            if img.mode != "RGB":
+                img = img.convert("RGB")
             ratio = settings.thumbnail_width / img.width
             new_height = int(img.height * ratio)
             img = img.resize(
                 (settings.thumbnail_width, new_height),
                 Image.BILINEAR,
+                reducing_gap=3.0,
             )
             img.save(thumb_path, format="WebP", quality=settings.thumbnail_quality)
         return thumb_path
@@ -72,8 +74,9 @@ def compute_blurhash(source_path: str | Path) -> str | None:
 
     try:
         with Image.open(source) as img:
-            img = img.convert("RGB")
-            img = img.resize((100, 100), Image.BILINEAR)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            img = img.resize((100, 100), Image.BILINEAR, reducing_gap=3.0)
             return bh.encode(np.array(img), settings.blurhash_x, settings.blurhash_y)
     except Exception:
         return None
@@ -89,7 +92,7 @@ def compute_blurhash_from_image(img: Image.Image) -> str | None:
         BlurHash 字符串，失败返回 None
     """
     try:
-        small = img.resize((100, 100), Image.BILINEAR)
+        small = img.resize((100, 100), Image.BILINEAR, reducing_gap=3.0)
         return bh.encode(np.array(small), settings.blurhash_x, settings.blurhash_y)
     except Exception:
         return None
