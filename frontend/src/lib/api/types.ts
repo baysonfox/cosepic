@@ -355,6 +355,18 @@ export interface EmbeddingStatus {
   }>;
 }
 
+export interface PackEmbeddingStatus {
+  pack_id: number;
+  total_images: number;
+  processed_images: number;
+  progress: number;
+}
+
+export interface ProcessEmbeddingResult {
+  pack_id: number;
+  status: string;
+}
+
 export interface EmbeddingStats {
   total_packs: number;
   total_assets: number;
