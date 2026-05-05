@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import BackgroundTasks
-from sqlmodel import Session, select
+from sqlmodel import Session, delete, select
 
 from app.models.asset import Asset
 from app.models.character import Character
@@ -164,6 +164,14 @@ async def commit_batch(
     batch.status = "done"
     batch.finished_at = datetime.now(timezone.utc)
     db.add(batch)
+
+    db.exec(
+        delete(ImportCandidate).where(
+            ImportCandidate.batch_id == batch_id,
+            ImportCandidate.status == "imported",
+        )
+    )
+
     db.commit()
 
     return {

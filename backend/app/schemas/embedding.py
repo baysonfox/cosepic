@@ -46,3 +46,19 @@ class EmbeddingStatsResponse(BaseModel):
     completed_packs: int
     incomplete_packs: list[EmbeddingStatsItem] = []
     no_embedding_packs: list[EmbeddingStatsItem] = []
+
+
+class PackEmbeddingStatusResponse(BaseModel):
+    """单个 Pack 的 embedding 状态."""
+
+    pack_id: int
+    total_images: int
+    processed_images: int
+    progress: float
+
+
+class ProcessEmbeddingResponse(BaseModel):
+    """触发 embedding 处理的响应."""
+
+    pack_id: int
+    status: str
