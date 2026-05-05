@@ -6,7 +6,15 @@ from sqlmodel import Session
 from app.config import settings
 from app.dependencies import get_db
 from app.schemas.common import PaginatedResponse
-from app.schemas.pack import PackCreate, PackListItem, PackOut, PackUpdate
+from app.schemas.pack import (
+    PackBulkDeleteResult,
+    PackBulkIdsRequest,
+    PackBulkRegenerateResult,
+    PackCreate,
+    PackListItem,
+    PackOut,
+    PackUpdate,
+)
 from app.services import pack_service
 
 router = APIRouter(prefix="/api/v1/packs", tags=["packs"])
@@ -97,3 +105,25 @@ def delete_pack(pack_id: int, db: Session = Depends(get_db)):
     result = pack_service.delete_pack(db, pack_id)
     if result == "not_found":
         raise HTTPException(status_code=404, detail="Pack not found")
+
+
+@router.post("/bulk-delete", response_model=PackBulkDeleteResult)
+def bulk_delete_packs(
+    body: PackBulkIdsRequest,
+    db: Session = Depends(get_db),
+):
+    """Delete multiple packs in one call.
+
+    Each id is processed independently; missing ids are returned in
+    ``not_found`` rather than failing the whole call.
+    """
+    return pack_service.bulk_delete_packs(db, body.ids)
+
+
+@router.post("/bulk-regenerate", response_model=PackBulkRegenerateResult)
+def bulk_regenerate_packs(
+    body: PackBulkIdsRequest,
+    db: Session = Depends(get_db),
+):
+    """Regenerate thumbnails + BlurHash for multiple packs sequentially."""
+    return pack_service.bulk_regenerate_thumbnails(db, body.ids)

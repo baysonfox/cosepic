@@ -296,3 +296,106 @@ class TestPackRelationUpdate:
         assert r.json()["title"] == "Updated"
         assert len(r.json()["cosers"]) == 1
         assert len(r.json()["tags"]) == 1
+
+
+class TestBulkOperations:
+    """POST /api/v1/packs/bulk-delete and /bulk-regenerate."""
+
+    def test_bulk_delete_success(self, client, db):
+        p1 = make_pack(db, title="B1", dir_path="/tmp/b1", original_folder_name="b1")
+        p2 = make_pack(db, title="B2", dir_path="/tmp/b2", original_folder_name="b2")
+        p3 = make_pack(db, title="B3", dir_path="/tmp/b3", original_folder_name="b3")
+
+        r = client.post(
+            "/api/v1/packs/bulk-delete",
+            json={"ids": [p1.id, p2.id, p3.id]},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["deleted"] == 3
+        assert body["not_found"] == []
+        # All gone
+        for pid in (p1.id, p2.id, p3.id):
+            assert client.get(f"/api/v1/packs/{pid}").status_code == 404
+
+    def test_bulk_delete_partial(self, client, db):
+        p1 = make_pack(db, title="P1", dir_path="/tmp/p1", original_folder_name="p1")
+        p2 = make_pack(db, title="P2", dir_path="/tmp/p2", original_folder_name="p2")
+        ghost = 999_999
+
+        r = client.post(
+            "/api/v1/packs/bulk-delete",
+            json={"ids": [p1.id, ghost, p2.id]},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["deleted"] == 2
+        assert body["not_found"] == [ghost]
+
+    def test_bulk_delete_dedupes_ids(self, client, db):
+        p1 = make_pack(db, title="Dup", dir_path="/tmp/dup", original_folder_name="dup")
+
+        r = client.post(
+            "/api/v1/packs/bulk-delete",
+            json={"ids": [p1.id, p1.id, p1.id]},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        # Service dedupes before lookup, so the duplicate ids are absorbed.
+        assert body["deleted"] == 1
+        assert body["not_found"] == []
+
+    def test_bulk_delete_cascades_assets(self, client, db):
+        p1 = make_pack(db, title="WithAssets", dir_path="/tmp/wa", original_folder_name="wa")
+        make_asset(db, pack_id=p1.id, file_name="a.jpg", relative_path="a.jpg")
+        make_asset(db, pack_id=p1.id, file_name="b.jpg", relative_path="b.jpg")
+
+        r = client.post("/api/v1/packs/bulk-delete", json={"ids": [p1.id]})
+        assert r.status_code == 200
+        assert r.json()["deleted"] == 1
+        # Assets should be gone — fetching the pack returns 404
+        assert client.get(f"/api/v1/packs/{p1.id}").status_code == 404
+
+    def test_bulk_delete_empty_ids_rejected(self, client):
+        r = client.post("/api/v1/packs/bulk-delete", json={"ids": []})
+        assert r.status_code == 422
+
+    def test_bulk_delete_too_many_rejected(self, client):
+        r = client.post(
+            "/api/v1/packs/bulk-delete",
+            json={"ids": list(range(1, 502))},
+        )
+        assert r.status_code == 422
+
+    def test_bulk_regenerate_no_assets_succeeds(self, client, db):
+        """Regenerate on a pack without assets is a successful no-op."""
+        p1 = make_pack(db, title="NoAssets", dir_path="/tmp/na", original_folder_name="na")
+        p2 = make_pack(db, title="NoAssets2", dir_path="/tmp/na2", original_folder_name="na2")
+
+        r = client.post(
+            "/api/v1/packs/bulk-regenerate",
+            json={"ids": [p1.id, p2.id]},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["succeeded"] == 2
+        assert body["failed"] == []
+        assert body["thumbnails_generated"] == 0
+        assert body["hashes_computed"] == 0
+
+    def test_bulk_regenerate_partial(self, client, db):
+        p1 = make_pack(db, title="Real", dir_path="/tmp/real", original_folder_name="real")
+        ghost = 888_888
+
+        r = client.post(
+            "/api/v1/packs/bulk-regenerate",
+            json={"ids": [p1.id, ghost]},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["succeeded"] == 1
+        assert body["failed"] == [ghost]
+
+    def test_bulk_regenerate_empty_ids_rejected(self, client):
+        r = client.post("/api/v1/packs/bulk-regenerate", json={"ids": []})
+        assert r.status_code == 422

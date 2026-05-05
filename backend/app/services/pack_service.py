@@ -376,6 +376,79 @@ def delete_pack(db: Session, pack_id: int) -> bool | str:
 
 
 # ---------------------------------------------------------------------------
+# Bulk operations
+# ---------------------------------------------------------------------------
+
+
+def bulk_delete_packs(db: Session, ids: list[int]) -> dict:
+    """Delete multiple packs in sequence, returning aggregate counts.
+
+    Each pack is deleted via :func:`delete_pack`, which already handles
+    cascade cleanup, orphan pruning, and per-call commits.  IDs that do
+    not resolve to a pack are accumulated in ``not_found``; the rest are
+    counted in ``deleted``.
+
+    Args:
+        db: Active database session.
+        ids: Pack ids to delete (deduplicated internally).
+
+    Returns:
+        ``{"deleted": int, "not_found": list[int]}`` matching
+        :class:`app.schemas.pack.PackBulkDeleteResult`.
+    """
+    deleted = 0
+    not_found: list[int] = []
+    for pid in dict.fromkeys(ids):  # preserve order, dedupe
+        result = delete_pack(db, pid)
+        if result == "not_found":
+            not_found.append(pid)
+        else:
+            deleted += 1
+    return {"deleted": deleted, "not_found": not_found}
+
+
+def bulk_regenerate_thumbnails(db: Session, ids: list[int]) -> dict:
+    """Regenerate thumbnails + BlurHash for multiple packs in sequence.
+
+    Calls :func:`app.services.asset_service.generate_pack_thumbnails` for
+    each id.  Counts and per-pack failures are aggregated.  Imported
+    locally to avoid a circular dependency between pack and asset
+    services at module-import time.
+
+    Args:
+        db: Active database session.
+        ids: Pack ids to regenerate (deduplicated internally).
+
+    Returns:
+        Dict matching :class:`app.schemas.pack.PackBulkRegenerateResult`.
+    """
+    from app.services import asset_service
+
+    succeeded = 0
+    failed: list[int] = []
+    thumbnails_generated = 0
+    hashes_computed = 0
+    for pid in dict.fromkeys(ids):
+        if db.get(Pack, pid) is None:
+            failed.append(pid)
+            continue
+        try:
+            result = asset_service.generate_pack_thumbnails(db, pid)
+        except Exception:
+            failed.append(pid)
+            continue
+        succeeded += 1
+        thumbnails_generated += result.get("thumbnails_generated", 0)
+        hashes_computed += result.get("hashes_computed", 0)
+    return {
+        "succeeded": succeeded,
+        "failed": failed,
+        "thumbnails_generated": thumbnails_generated,
+        "hashes_computed": hashes_computed,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 

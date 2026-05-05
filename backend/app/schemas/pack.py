@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PackCreate(BaseModel):
@@ -94,3 +94,30 @@ class PackListItem(BaseModel):
     created_at: datetime
     cosers: list[CoserBrief] = []
     characters: list[CharacterBrief] = []
+
+
+# ---------------------------------------------------------------------------
+# Bulk operations
+# ---------------------------------------------------------------------------
+
+
+class PackBulkIdsRequest(BaseModel):
+    """Request body shared by bulk endpoints; deduplicates ids server-side."""
+
+    ids: list[int] = Field(min_length=1, max_length=500)
+
+
+class PackBulkDeleteResult(BaseModel):
+    """Outcome of a bulk delete call."""
+
+    deleted: int
+    not_found: list[int]
+
+
+class PackBulkRegenerateResult(BaseModel):
+    """Outcome of a bulk thumbnail regeneration call."""
+
+    succeeded: int
+    failed: list[int]
+    thumbnails_generated: int
+    hashes_computed: int
