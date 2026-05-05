@@ -84,6 +84,20 @@ export interface PackUpdate {
   tag_ids?: number[];
 }
 
+// Result of POST /api/v1/packs/bulk-delete.
+export interface PackBulkDeleteResult {
+  deleted: number;
+  not_found: number[];
+}
+
+// Result of POST /api/v1/packs/bulk-regenerate.
+export interface PackBulkRegenerateResult {
+  succeeded: number;
+  failed: number[];
+  thumbnails_generated: number;
+  hashes_computed: number;
+}
+
 // ---------------------------------------------------------------------------
 // Asset
 // ---------------------------------------------------------------------------
@@ -263,6 +277,12 @@ export interface ImportCommitResult {
   }>;
 }
 
+export interface CancelImportResult {
+  pack_id: number;
+  batch_id: number | null;
+  candidate_id: number | null;
+}
+
 export interface DuplicateItem {
   duplicate_pack_id: number;
   duplicate_pack_title: string;
@@ -319,17 +339,6 @@ export interface PackFilterParams {
 // Embedding
 // ---------------------------------------------------------------------------
 
-export interface SemanticSearchResult {
-  query_text: string;
-  results: Array<{
-    asset_id: number;
-    pack_id: number;
-    pack_title: string;
-    file_name: string;
-    similarity: number;
-  }>;
-}
-
 export interface DuplicateCheckResult {
   pack_id: number;
   has_duplicates: boolean;
@@ -343,5 +352,36 @@ export interface EmbeddingStatus {
     total_images: number;
     processed_images: number;
     progress: number;
+  }>;
+}
+
+export interface PackEmbeddingStatus {
+  pack_id: number;
+  total_images: number;
+  processed_images: number;
+  progress: number;
+}
+
+export interface ProcessEmbeddingResult {
+  pack_id: number;
+  status: string;
+}
+
+export interface EmbeddingStats {
+  total_packs: number;
+  total_assets: number;
+  embeddings_count: number;
+  completed_packs: number;
+  incomplete_packs: Array<{
+    pack_id: number;
+    pack_title: string;
+    total_images: number;
+    processed_images: number;
+    progress: number;
+  }>;
+  no_embedding_packs: Array<{
+    pack_id: number;
+    pack_title: string;
+    total_images: number;
   }>;
 }

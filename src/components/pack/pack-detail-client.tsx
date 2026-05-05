@@ -1,16 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Sparkles, Loader2 } from "lucide-react";
 import type { ChipSelectorItem } from "@/components/entity/chip-selector";
 import { AssetGrid } from "@/components/gallery/asset-grid";
 import { LightboxWrapper } from "@/components/media/lightbox-wrapper";
+import { Button } from "@/components/ui/button";
 import { PackEditControls } from "@/components/pack/pack-edit-controls";
 import { PackHeader } from "@/components/pack/pack-header";
 import { PackMetadata } from "@/components/pack/pack-metadata";
 import { listCharacters } from "@/lib/api/characters";
 import { clientFetch, ApiError } from "@/lib/api/client";
 import { listCosers } from "@/lib/api/cosers";
+import { getPackEmbeddingStatus, triggerEmbedding } from "@/lib/api/embeddings";
 import { listOutfits } from "@/lib/api/outfits";
 import { updatePack } from "@/lib/api/packs";
 import { listTags } from "@/lib/api/tags";
@@ -98,11 +101,65 @@ export function PackDetailClient({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [embeddingStatus, setEmbeddingStatus] = useState<{
+    processed_images: number;
+    total_images: number;
+    progress: number;
+  } | null>(null);
+  const [embeddingLoading, setEmbeddingLoading] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     setCurrentPack(pack);
     setDraft(mapPackToDraft(pack));
   }, [pack]);
+
+  useEffect(() => {
+    getPackEmbeddingStatus(pack.id)
+      .then((status) => setEmbeddingStatus(status))
+      .catch(() => setEmbeddingStatus(null));
+  }, [pack.id]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
+    };
+  }, []);
+
+  function startPolling(packId: number) {
+    pollingRef.current = setInterval(async () => {
+      try {
+        const status = await getPackEmbeddingStatus(packId);
+        setEmbeddingStatus(status);
+        if (status.progress >= 1) {
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+          setEmbeddingLoading(false);
+        }
+      } catch {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        setEmbeddingLoading(false);
+      }
+    }, 2000);
+  }
+
+  async function handleTriggerEmbedding() {
+    if (embeddingLoading) return;
+    setEmbeddingLoading(true);
+    try {
+      await triggerEmbedding(pack.id);
+      startPolling(pack.id);
+    } catch {
+      setEmbeddingLoading(false);
+    }
+  }
 
   const searchCosers = useCallback(async (query: string) => {
     const data = await listCosers({ q: query || undefined, page_size: 20 }, clientFetch);
@@ -205,13 +262,39 @@ export function PackDetailClient({
           setDraft((prev) => ({ ...prev, description: value }))
         }
         actions={
-          <PackEditControls
-            editing={editing}
-            saving={saving}
-            onEdit={handleEdit}
-            onSave={() => void handleSave()}
-            onCancel={handleCancel}
-          />
+          <div className="flex items-center gap-2">
+            {embeddingStatus && (
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <span>
+                  已向量化: {embeddingStatus.processed_images}/{embeddingStatus.total_images}
+                </span>
+              </div>
+            )}
+            {embeddingLoading ? (
+              <Button variant="outline" size="sm" disabled>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                {embeddingStatus
+                  ? `${Math.round(embeddingStatus.progress * 100)}%`
+                  : "..."}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleTriggerEmbedding()}
+              >
+                <Sparkles className="mr-1 h-3 w-3" />
+                向量化
+              </Button>
+            )}
+            <PackEditControls
+              editing={editing}
+              saving={saving}
+              onEdit={handleEdit}
+              onSave={() => void handleSave()}
+              onCancel={handleCancel}
+            />
+          </div>
         }
         errorMessage={saveError}
       />

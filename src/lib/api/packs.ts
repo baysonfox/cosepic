@@ -3,6 +3,8 @@
  */
 
 import type {
+  PackBulkDeleteResult,
+  PackBulkRegenerateResult,
   PackCreate,
   PackFilterParams,
   PackListItem,
@@ -90,4 +92,26 @@ export async function regeneratePack(
   fetcher: Fetcher,
 ): Promise<{ thumbnails_generated: number; hashes_computed: number }> {
   return fetcher(`/api/v1/packs/${id}/regenerate`, { method: "POST" });
+}
+
+export async function bulkDeletePacks(
+  ids: number[],
+  fetcher: Fetcher,
+): Promise<PackBulkDeleteResult> {
+  return fetcher("/api/v1/packs/bulk-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
+}
+
+export async function bulkRegeneratePacks(
+  ids: number[],
+  fetcher: Fetcher,
+): Promise<PackBulkRegenerateResult> {
+  return fetcher("/api/v1/packs/bulk-regenerate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  });
 }

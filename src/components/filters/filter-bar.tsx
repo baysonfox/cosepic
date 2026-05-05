@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { SearchInput } from "@/components/filters/search-input";
-import { SemanticSearchInput } from "@/components/filters/semantic-search-input";
 import { ChipSelector, type ChipSelectorItem } from "@/components/entity/chip-selector";
 import {
   Select,
@@ -12,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clientFetch } from "@/lib/api/client";
 import { listCharacters } from "@/lib/api/characters";
 import { listCosers } from "@/lib/api/cosers";
@@ -42,8 +40,6 @@ function FilterBarContent() {
     [searchParams],
   );
 
-  const searchMode = searchParams.get("searchMode") || "text";
-
   const [selectedCosers, setSelectedCosers] = useState<ChipSelectorItem[]>([]);
   const [selectedWorks, setSelectedWorks] = useState<ChipSelectorItem[]>([]);
   const [selectedCharacters, setSelectedCharacters] = useState<ChipSelectorItem[]>([]);
@@ -58,14 +54,6 @@ function FilterBarContent() {
     };
     const qs = buildPackFilterSearchParams(next).toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
-  }
-
-  function setSearchMode(mode: string) {
-    const params = new URLSearchParams(searchParams);
-    params.set("searchMode", mode);
-    params.delete("q");
-    params.delete("topK");
-    router.push(`${pathname}?${params.toString()}`);
   }
 
   function setParam(key: "has_video" | "sort" | "order", value: string | null) {
@@ -173,14 +161,7 @@ function FilterBarContent() {
   return (
     <div className="space-y-3 rounded-lg border border-border bg-card p-4">
       <div className="space-y-3">
-        <Tabs value={searchMode} onValueChange={setSearchMode}>
-          <TabsList>
-            <TabsTrigger value="text">文本搜索</TabsTrigger>
-            <TabsTrigger value="semantic">语义搜索</TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        {searchMode === "text" ? <SearchInput placeholder="Search packs..." /> : <SemanticSearchInput />}
+        <SearchInput placeholder="Search packs..." />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">

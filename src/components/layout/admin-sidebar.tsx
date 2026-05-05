@@ -14,12 +14,14 @@ import {
   Tags,
   Upload,
   Users,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/imports", label: "Imports", icon: Upload },
+  { href: "/admin/embeddings", label: "Embeddings", icon: Zap },
   { href: "/admin/tasks", label: "Tasks", icon: ListChecks },
   { href: "/admin/packs", label: "Packs", icon: Package },
   { href: "/admin/cosers", label: "Cosers", icon: Users },

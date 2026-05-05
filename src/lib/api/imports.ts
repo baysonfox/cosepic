@@ -3,6 +3,7 @@
  */
 
 import type {
+  CancelImportResult,
   ImportBatchOut,
   ImportCandidateOut,
   ImportCandidateUpdate,
@@ -45,8 +46,23 @@ export async function updateCandidate(
 export async function commitBatch(
   batchId: number,
   fetcher: Fetcher,
+  skipDuplicateCheck?: boolean,
 ): Promise<ImportCommitResult> {
-  return fetcher(`/api/v1/imports/${batchId}/commit`, {
+  const params = new URLSearchParams();
+  if (skipDuplicateCheck) {
+    params.set("skip_duplicate_check", "true");
+  }
+  const url = `/api/v1/imports/${batchId}/commit${params.toString() ? `?${params.toString()}` : ""}`;
+  return fetcher(url, {
     method: "POST",
+  });
+}
+
+export async function cancelImport(
+  packId: number,
+  fetcher: Fetcher,
+): Promise<CancelImportResult> {
+  return fetcher(`/api/v1/imports/packs/${packId}/cancel`, {
+    method: "DELETE",
   });
 }

@@ -1,21 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-test("semantic search tab is visible", async ({ page }) => {
-  await page.goto("/packs");
-  await page.waitForLoadState("networkidle");
-
-  await expect(page.getByRole("heading", { name: "Packs" })).toBeVisible();
-
-  // 验证语义搜索 tab 存在
-  await expect(page.getByRole("tab", { name: "语义搜索" })).toBeVisible();
-
-  // 切换到语义搜索模式
-  await page.getByRole("tab", { name: "语义搜索" }).click();
-
-  // 验证 URL 更新
-  await expect(page).toHaveURL(/searchMode=semantic/);
-});
-
 test("embedding status shows after import", async ({ page }) => {
   await page.goto("/admin/imports");
   await page.waitForLoadState("networkidle");
