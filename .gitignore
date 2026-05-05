@@ -21,6 +21,7 @@ backend/data/
 backend/playwright_data/
 frontend/test-results/
 frontend/playwright-report/
+test_images/
 
 # Node
 node_modules/
