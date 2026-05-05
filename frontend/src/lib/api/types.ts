@@ -84,6 +84,20 @@ export interface PackUpdate {
   tag_ids?: number[];
 }
 
+// Result of POST /api/v1/packs/bulk-delete.
+export interface PackBulkDeleteResult {
+  deleted: number;
+  not_found: number[];
+}
+
+// Result of POST /api/v1/packs/bulk-regenerate.
+export interface PackBulkRegenerateResult {
+  succeeded: number;
+  failed: number[];
+  thumbnails_generated: number;
+  hashes_computed: number;
+}
+
 // ---------------------------------------------------------------------------
 // Asset
 // ---------------------------------------------------------------------------

@@ -3,12 +3,19 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
 import { Pagination } from "@/components/filters/pagination";
 import { SearchInput } from "@/components/filters/search-input";
 import { buttonVariants, Button } from "@/components/ui/button";
 import { ApiError, clientFetch } from "@/lib/api/client";
-import { deletePack, listPacks, regeneratePack } from "@/lib/api/packs";
+import {
+  bulkDeletePacks,
+  bulkRegeneratePacks,
+  deletePack,
+  listPacks,
+  regeneratePack,
+} from "@/lib/api/packs";
 import type { PackListItem } from "@/lib/api/types";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -69,6 +76,8 @@ function AdminPacksPageContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [selectedIds, setSelectedIds] = useState<Set<string | number>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState<"delete" | "regenerate" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +120,40 @@ function AdminPacksPageContent() {
     };
   }, [page, q, reloadKey]);
 
+  // Selection only spans the current page; clear it whenever the
+  // visible window changes (page / search / explicit reload).
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, q, reloadKey]);
+
+  function selectedNumericIds(): number[] {
+    const out: number[] = [];
+    for (const id of selectedIds) {
+      if (typeof id === "number") out.push(id);
+      else {
+        const n = Number(id);
+        if (Number.isFinite(n)) out.push(n);
+      }
+    }
+    return out;
+  }
+
+  function reloadOrStepBack(removedCount: number) {
+    // If we just emptied the current page (and it isn't page 1), step
+    // back one page so the user sees content. Otherwise refetch in place.
+    if (removedCount >= items.length && page > 1) {
+      const next = new URLSearchParams(searchParams.toString());
+      if (page - 1 <= 1) {
+        next.delete("page");
+      } else {
+        next.set("page", String(page - 1));
+      }
+      router.push(`${pathname}?${next.toString()}`);
+    } else {
+      setReloadKey((value) => value + 1);
+    }
+  }
+
   async function handleDelete(pack: PackListItem) {
     if (!window.confirm(`Delete ${pack.title}?`)) {
       return;
@@ -118,17 +161,7 @@ function AdminPacksPageContent() {
 
     try {
       await deletePack(pack.id, clientFetch);
-      if (items.length === 1 && page > 1) {
-        const next = new URLSearchParams(searchParams.toString());
-        if (page - 1 <= 1) {
-          next.delete("page");
-        } else {
-          next.set("page", String(page - 1));
-        }
-        router.push(`${pathname}?${next.toString()}`);
-      } else {
-        setReloadKey((value) => value + 1);
-      }
+      reloadOrStepBack(1);
       setInfoMessage(null);
       setErrorMessage(null);
     } catch (error) {
@@ -152,6 +185,59 @@ function AdminPacksPageContent() {
     }
   }
 
+  async function handleBulkDelete() {
+    const ids = selectedNumericIds();
+    if (ids.length === 0) return;
+    if (!window.confirm(`确认删除选中的 ${ids.length} 个 pack？此操作不可撤销。`)) {
+      return;
+    }
+    setBulkBusy("delete");
+    try {
+      const result = await bulkDeletePacks(ids, clientFetch);
+      const missingNote = result.not_found.length
+        ? `，${result.not_found.length} 项未找到`
+        : "";
+      setInfoMessage(`已删除 ${result.deleted} 项${missingNote}。`);
+      setErrorMessage(null);
+      reloadOrStepBack(result.deleted);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError ? error.detail : "批量删除失败。",
+      );
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function handleBulkRegenerate() {
+    const ids = selectedNumericIds();
+    if (ids.length === 0) return;
+    if (!window.confirm(`确认对 ${ids.length} 个 pack 重新生成缩略图？这可能需要一段时间。`)) {
+      return;
+    }
+    setBulkBusy("regenerate");
+    try {
+      const result = await bulkRegeneratePacks(ids, clientFetch);
+      const failNote = result.failed.length
+        ? `，${result.failed.length} 项失败`
+        : "";
+      setInfoMessage(
+        `已处理 ${result.succeeded} 项${failNote}，共生成 ${result.thumbnails_generated} 张缩略图。`,
+      );
+      setErrorMessage(null);
+      // Refresh so any status changes propagate.
+      setReloadKey((value) => value + 1);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError ? error.detail : "批量重生失败。",
+      );
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  const selectedCount = selectedIds.size;
+
   return (
     <div className="space-y-6">
       <div className="space-y-1">
@@ -163,6 +249,29 @@ function AdminPacksPageContent() {
 
       <SearchInput placeholder="Search packs..." />
 
+      <BulkActionBar
+        selectedCount={selectedCount}
+        onClear={() => setSelectedIds(new Set())}
+        actions={[
+          {
+            key: "regenerate",
+            label: `重新生成缩略图 (${selectedCount})`,
+            variant: "outline",
+            loading: bulkBusy === "regenerate",
+            disabled: bulkBusy !== null && bulkBusy !== "regenerate",
+            onClick: handleBulkRegenerate,
+          },
+          {
+            key: "delete",
+            label: `删除 (${selectedCount})`,
+            variant: "destructive",
+            loading: bulkBusy === "delete",
+            disabled: bulkBusy !== null && bulkBusy !== "delete",
+            onClick: handleBulkDelete,
+          },
+        ]}
+      />
+
       {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
       {infoMessage && <p className="text-sm text-muted-foreground">{infoMessage}</p>}
 
@@ -172,6 +281,9 @@ function AdminPacksPageContent() {
         loading={loading}
         getRowKey={(item) => item.id}
         emptyMessage="No packs found."
+        selectable
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
         actions={(item) => (
           <>
             <Link
