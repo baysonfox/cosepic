@@ -3,6 +3,7 @@
  */
 
 import type {
+  DeleteOrphansResult,
   PaginatedResponse,
   TagCreate,
   TagOut,
@@ -58,4 +59,10 @@ export async function deleteTag(
   fetcher: Fetcher,
 ): Promise<void> {
   await fetcher(`/api/v1/tags/${id}`, { method: "DELETE" });
+}
+
+export async function deleteOrphanTags(
+  fetcher: Fetcher,
+): Promise<DeleteOrphansResult> {
+  return fetcher(`/api/v1/tags/delete-orphans`, { method: "POST" });
 }

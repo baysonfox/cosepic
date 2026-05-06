@@ -3,6 +3,7 @@
  */
 
 import type {
+  DeleteOrphansResult,
   PaginatedResponse,
   WorkCreate,
   WorkOut,
@@ -58,4 +59,10 @@ export async function deleteWork(
   fetcher: Fetcher,
 ): Promise<void> {
   await fetcher(`/api/v1/works/${id}`, { method: "DELETE" });
+}
+
+export async function deleteOrphanWorks(
+  fetcher: Fetcher,
+): Promise<DeleteOrphansResult> {
+  return fetcher(`/api/v1/works/delete-orphans`, { method: "POST" });
 }

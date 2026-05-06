@@ -13,6 +13,11 @@ export interface PaginatedResponse<T> {
   page_size: number;
 }
 
+// Result of POST /api/v1/{entity}/delete-orphans for cosers/works/characters/outfits/tags.
+export interface DeleteOrphansResult {
+  deleted: number;
+}
+
 // ---------------------------------------------------------------------------
 // Pack
 // ---------------------------------------------------------------------------

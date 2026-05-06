@@ -6,6 +6,7 @@ import type {
   CharacterCreate,
   CharacterOut,
   CharacterUpdate,
+  DeleteOrphansResult,
   PaginatedResponse,
 } from "./types";
 
@@ -59,4 +60,10 @@ export async function deleteCharacter(
   fetcher: Fetcher,
 ): Promise<void> {
   await fetcher(`/api/v1/characters/${id}`, { method: "DELETE" });
+}
+
+export async function deleteOrphanCharacters(
+  fetcher: Fetcher,
+): Promise<DeleteOrphansResult> {
+  return fetcher(`/api/v1/characters/delete-orphans`, { method: "POST" });
 }

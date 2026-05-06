@@ -3,6 +3,7 @@
  */
 
 import type {
+  DeleteOrphansResult,
   OutfitCreate,
   OutfitOut,
   OutfitUpdate,
@@ -59,4 +60,10 @@ export async function deleteOutfit(
   fetcher: Fetcher,
 ): Promise<void> {
   await fetcher(`/api/v1/outfits/${id}`, { method: "DELETE" });
+}
+
+export async function deleteOrphanOutfits(
+  fetcher: Fetcher,
+): Promise<DeleteOrphansResult> {
+  return fetcher(`/api/v1/outfits/delete-orphans`, { method: "POST" });
 }

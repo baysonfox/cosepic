@@ -6,6 +6,7 @@ import type {
   CoserCreate,
   CoserOut,
   CoserUpdate,
+  DeleteOrphansResult,
   PaginatedResponse,
 } from "./types";
 
@@ -58,6 +59,12 @@ export async function deleteCoser(
   fetcher: Fetcher,
 ): Promise<void> {
   await fetcher(`/api/v1/cosers/${id}`, { method: "DELETE" });
+}
+
+export async function deleteOrphanCosers(
+  fetcher: Fetcher,
+): Promise<DeleteOrphansResult> {
+  return fetcher(`/api/v1/cosers/delete-orphans`, { method: "POST" });
 }
 
 export async function addAlias(
