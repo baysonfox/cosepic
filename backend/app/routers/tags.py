@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.dependencies import get_db
-from app.schemas.common import PaginatedResponse
+from app.schemas.common import DeleteOrphansResponse, PaginatedResponse
 from app.schemas.entities import TagCreate, TagOut, TagUpdate
 from app.services import entity_service
 
@@ -17,6 +17,13 @@ def list_tags(q: str | None = None, page: int = 1, page_size: int | None = None,
     ps = min(page_size or settings.default_page_size, settings.max_page_size)
     items, total = entity_service.list_tags(db, q=q, page=page, page_size=ps)
     return PaginatedResponse(items=items, total=total, page=page, page_size=ps)
+
+
+@router.post("/delete-orphans", response_model=DeleteOrphansResponse)
+def delete_orphan_tags(db: Session = Depends(get_db)):
+    """Delete every Tag with no Pack association."""
+    deleted = entity_service.delete_orphan_tags(db)
+    return DeleteOrphansResponse(deleted=deleted)
 
 
 @router.get("/{tag_id}", response_model=TagOut)

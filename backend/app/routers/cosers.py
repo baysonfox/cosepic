@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.dependencies import get_db
-from app.schemas.common import PaginatedResponse
+from app.schemas.common import DeleteOrphansResponse, PaginatedResponse
 from app.schemas.coser import (
     CoserAliasCreate,
     CoserAliasOut,
@@ -29,6 +29,13 @@ def list_cosers(
     ps = min(page_size or settings.default_page_size, settings.max_page_size)
     items, total = coser_service.list_cosers(db, q=q, page=page, page_size=ps)
     return PaginatedResponse(items=items, total=total, page=page, page_size=ps)
+
+
+@router.post("/delete-orphans", response_model=DeleteOrphansResponse)
+def delete_orphan_cosers(db: Session = Depends(get_db)):
+    """Delete every Coser with no associated Pack."""
+    deleted = coser_service.delete_orphan_cosers(db)
+    return DeleteOrphansResponse(deleted=deleted)
 
 
 @router.get("/{coser_id}", response_model=CoserOut)

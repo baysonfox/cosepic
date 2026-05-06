@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.dependencies import get_db
-from app.schemas.common import PaginatedResponse
+from app.schemas.common import DeleteOrphansResponse, PaginatedResponse
 from app.schemas.entities import CharacterCreate, CharacterOut, CharacterUpdate
 from app.services import entity_service
 
@@ -21,6 +21,16 @@ def list_characters(
     ps = min(page_size or settings.default_page_size, settings.max_page_size)
     items, total = entity_service.list_characters(db, q=q, work_id=work_id, page=page, page_size=ps)
     return PaginatedResponse(items=items, total=total, page=page, page_size=ps)
+
+
+@router.post("/delete-orphans", response_model=DeleteOrphansResponse)
+def delete_orphan_characters(db: Session = Depends(get_db)):
+    """Delete every Character with no Pack association.
+
+    Skips Characters that still own a Pack-linked Outfit.
+    """
+    deleted = entity_service.delete_orphan_characters(db)
+    return DeleteOrphansResponse(deleted=deleted)
 
 
 @router.get("/{char_id}", response_model=CharacterOut)

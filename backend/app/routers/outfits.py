@@ -5,7 +5,7 @@ from sqlmodel import Session
 
 from app.config import settings
 from app.dependencies import get_db
-from app.schemas.common import PaginatedResponse
+from app.schemas.common import DeleteOrphansResponse, PaginatedResponse
 from app.schemas.entities import OutfitCreate, OutfitOut, OutfitUpdate
 from app.services import entity_service
 
@@ -21,6 +21,13 @@ def list_outfits(
     ps = min(page_size or settings.default_page_size, settings.max_page_size)
     items, total = entity_service.list_outfits(db, q=q, character_id=character_id, page=page, page_size=ps)
     return PaginatedResponse(items=items, total=total, page=page, page_size=ps)
+
+
+@router.post("/delete-orphans", response_model=DeleteOrphansResponse)
+def delete_orphan_outfits(db: Session = Depends(get_db)):
+    """Delete every Outfit with no Pack association."""
+    deleted = entity_service.delete_orphan_outfits(db)
+    return DeleteOrphansResponse(deleted=deleted)
 
 
 @router.get("/{outfit_id}", response_model=OutfitOut)
