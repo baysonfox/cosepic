@@ -1,6 +1,13 @@
 """Integration tests for Work, Character, Outfit, and Tag API endpoints."""
 
-from tests.conftest import make_character, make_outfit, make_work
+from app.models.relations import PackCharacter, PackOutfit, PackTag
+from tests.conftest import (
+    make_character,
+    make_outfit,
+    make_pack,
+    make_tag,
+    make_work,
+)
 
 
 # ===================================================================
@@ -183,3 +190,137 @@ class TestTagsAPI:
 
     def test_get_tag_not_found(self, client):
         assert client.get("/api/v1/tags/999").status_code == 404
+
+
+# ===================================================================
+# Delete orphans
+# ===================================================================
+
+class TestDeleteOrphanWorks:
+    """POST /api/v1/works/delete-orphans removes Works without packs."""
+
+    def test_returns_zero_when_empty(self, client):
+        r = client.post("/api/v1/works/delete-orphans")
+        assert r.status_code == 200
+        assert r.json() == {"deleted": 0}
+
+    def test_deletes_work_with_no_characters(self, client, db):
+        w = make_work(db, name="Lonely")
+        r = client.post("/api/v1/works/delete-orphans")
+        assert r.json() == {"deleted": 1}
+        assert client.get(f"/api/v1/works/{w.id}").status_code == 404
+
+    def test_deletes_work_with_unlinked_characters(self, client, db):
+        """A Work whose characters are NOT in any pack is orphan;
+        deleting it leaves those characters intact (work_id=NULL)."""
+        w = make_work(db, name="WorkWithFreeChars")
+        c = make_character(db, name="Floating", work_id=w.id)
+
+        r = client.post("/api/v1/works/delete-orphans")
+        assert r.json() == {"deleted": 1}
+        assert client.get(f"/api/v1/works/{w.id}").status_code == 404
+        # Character still exists, work_id cleared.
+        detail = client.get(f"/api/v1/characters/{c.id}").json()
+        assert detail["work_id"] is None
+
+    def test_skips_work_with_pack_linked_character(self, client, db):
+        w = make_work(db, name="LinkedWork")
+        c = make_character(db, name="InPack", work_id=w.id)
+        pack = make_pack(db, title="P")
+        db.add(PackCharacter(pack_id=pack.id, character_id=c.id, is_primary=True))
+        db.commit()
+
+        r = client.post("/api/v1/works/delete-orphans")
+        assert r.json() == {"deleted": 0}
+        assert client.get(f"/api/v1/works/{w.id}").status_code == 200
+
+
+class TestDeleteOrphanCharacters:
+    """POST /api/v1/characters/delete-orphans removes Characters without packs."""
+
+    def test_returns_zero_when_empty(self, client):
+        r = client.post("/api/v1/characters/delete-orphans")
+        assert r.json() == {"deleted": 0}
+
+    def test_deletes_orphan_and_its_orphan_outfit(self, client, db):
+        c = make_character(db, name="OrphanChar")
+        o = make_outfit(db, name="OrphanOutfit", character_id=c.id)
+
+        r = client.post("/api/v1/characters/delete-orphans")
+        assert r.json() == {"deleted": 1}
+        assert client.get(f"/api/v1/characters/{c.id}").status_code == 404
+        assert client.get(f"/api/v1/outfits/{o.id}").status_code == 404
+
+    def test_skips_character_with_pack(self, client, db):
+        c = make_character(db, name="LinkedChar")
+        pack = make_pack(db, title="P")
+        db.add(PackCharacter(pack_id=pack.id, character_id=c.id, is_primary=True))
+        db.commit()
+
+        r = client.post("/api/v1/characters/delete-orphans")
+        assert r.json() == {"deleted": 0}
+        assert client.get(f"/api/v1/characters/{c.id}").status_code == 200
+
+    def test_skips_character_when_outfit_has_pack(self, client, db):
+        """Even if the Character itself has no PackCharacter row, we
+        skip it when one of its Outfits is still in a Pack — otherwise
+        cascading would orphan a still-referenced Outfit."""
+        c = make_character(db, name="CharWithLinkedOutfit")
+        o = make_outfit(db, name="UsedOutfit", character_id=c.id)
+        pack = make_pack(db, title="P")
+        db.add(PackOutfit(pack_id=pack.id, outfit_id=o.id))
+        db.commit()
+
+        r = client.post("/api/v1/characters/delete-orphans")
+        assert r.json() == {"deleted": 0}
+        assert client.get(f"/api/v1/characters/{c.id}").status_code == 200
+        assert client.get(f"/api/v1/outfits/{o.id}").status_code == 200
+
+
+class TestDeleteOrphanOutfits:
+    """POST /api/v1/outfits/delete-orphans removes Outfits without packs."""
+
+    def test_returns_zero_when_empty(self, client):
+        r = client.post("/api/v1/outfits/delete-orphans")
+        assert r.json() == {"deleted": 0}
+
+    def test_deletes_orphan_outfit(self, client, db):
+        c = make_character(db, name="C")
+        o = make_outfit(db, name="OrphanOutfit", character_id=c.id)
+
+        r = client.post("/api/v1/outfits/delete-orphans")
+        assert r.json() == {"deleted": 1}
+        assert client.get(f"/api/v1/outfits/{o.id}").status_code == 404
+        # Parent character is untouched.
+        assert client.get(f"/api/v1/characters/{c.id}").status_code == 200
+
+    def test_skips_outfit_with_pack(self, client, db):
+        c = make_character(db, name="C")
+        o = make_outfit(db, name="LinkedOutfit", character_id=c.id)
+        pack = make_pack(db, title="P")
+        db.add(PackOutfit(pack_id=pack.id, outfit_id=o.id))
+        db.commit()
+
+        r = client.post("/api/v1/outfits/delete-orphans")
+        assert r.json() == {"deleted": 0}
+        assert client.get(f"/api/v1/outfits/{o.id}").status_code == 200
+
+
+class TestDeleteOrphanTags:
+    """POST /api/v1/tags/delete-orphans removes Tags without packs."""
+
+    def test_returns_zero_when_empty(self, client):
+        r = client.post("/api/v1/tags/delete-orphans")
+        assert r.json() == {"deleted": 0}
+
+    def test_deletes_orphan_and_keeps_linked(self, client, db):
+        orphan = make_tag(db, name="Lonely")
+        linked = make_tag(db, name="InUse")
+        pack = make_pack(db, title="P")
+        db.add(PackTag(pack_id=pack.id, tag_id=linked.id))
+        db.commit()
+
+        r = client.post("/api/v1/tags/delete-orphans")
+        assert r.json() == {"deleted": 1}
+        assert client.get(f"/api/v1/tags/{orphan.id}").status_code == 404
+        assert client.get(f"/api/v1/tags/{linked.id}").status_code == 200

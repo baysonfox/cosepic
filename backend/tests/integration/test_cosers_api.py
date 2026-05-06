@@ -1,5 +1,7 @@
 """Integration tests for Coser API endpoints."""
 
+from sqlmodel import select
+
 from tests.conftest import make_coser, make_pack
 from app.models.relations import PackCoser
 
@@ -115,3 +117,53 @@ def test_delete_alias(client, db):
 
     r = client.delete(f"/api/v1/cosers/{coser.id}/aliases/{alias.id}")
     assert r.status_code == 204
+
+
+# ===================================================================
+# Delete orphans
+# ===================================================================
+
+class TestDeleteOrphanCosers:
+    """POST /api/v1/cosers/delete-orphans removes Cosers without packs."""
+
+    def test_returns_zero_when_empty(self, client):
+        r = client.post("/api/v1/cosers/delete-orphans")
+        assert r.status_code == 200
+        assert r.json() == {"deleted": 0}
+
+    def test_skips_cosers_with_packs(self, client, db):
+        linked = make_coser(db, name="Linked")
+        pack = make_pack(db, title="P1")
+        db.add(PackCoser(pack_id=pack.id, coser_id=linked.id, is_primary=True))
+        db.commit()
+
+        r = client.post("/api/v1/cosers/delete-orphans")
+        assert r.status_code == 200
+        assert r.json() == {"deleted": 0}
+        # Coser still exists.
+        assert client.get(f"/api/v1/cosers/{linked.id}").status_code == 200
+
+    def test_deletes_orphan_and_keeps_linked(self, client, db):
+        from app.models.coser import CoserAlias
+
+        orphan = make_coser(db, name="Orphan")
+        db.add(CoserAlias(coser_id=orphan.id, alias="OrphanAlias"))
+        db.commit()
+
+        linked = make_coser(db, name="Linked")
+        pack = make_pack(db, title="LinkedPack")
+        db.add(PackCoser(pack_id=pack.id, coser_id=linked.id, is_primary=True))
+        db.commit()
+
+        r = client.post("/api/v1/cosers/delete-orphans")
+        assert r.status_code == 200
+        assert r.json() == {"deleted": 1}
+
+        # Orphan and its alias are gone.
+        assert client.get(f"/api/v1/cosers/{orphan.id}").status_code == 404
+        remaining_aliases = db.exec(
+            select(CoserAlias).where(CoserAlias.coser_id == orphan.id),
+        ).all()
+        assert remaining_aliases == []
+        # Linked Coser is still around.
+        assert client.get(f"/api/v1/cosers/{linked.id}").status_code == 200
