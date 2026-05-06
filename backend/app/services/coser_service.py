@@ -119,6 +119,34 @@ def delete_coser(db: Session, coser_id: int) -> bool | str:
     return True
 
 
+def delete_orphan_cosers(db: Session) -> int:
+    """Delete all Cosers that have no Pack association.
+
+    A Coser is considered orphan when no row in ``pack_coser`` references
+    its id. Aliases attached to the deleted Cosers are removed first.
+
+    Returns:
+        Number of Cosers actually deleted.
+    """
+    linked_subq = select(PackCoser.coser_id).distinct()
+    orphans = db.exec(
+        select(Coser).where(col(Coser.id).notin_(linked_subq)),
+    ).all()
+    if not orphans:
+        return 0
+
+    orphan_ids = [c.id for c in orphans]
+    aliases = db.exec(
+        select(CoserAlias).where(col(CoserAlias.coser_id).in_(orphan_ids)),
+    ).all()
+    for alias in aliases:
+        db.delete(alias)
+    for coser in orphans:
+        db.delete(coser)
+    db.commit()
+    return len(orphans)
+
+
 def add_alias(db: Session, coser_id: int, alias: str) -> CoserAlias | None:
     """Add an alias to a Coser. Returns None if Coser not found."""
     coser = db.get(Coser, coser_id)

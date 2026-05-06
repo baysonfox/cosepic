@@ -88,6 +88,42 @@ def delete_work(db: Session, work_id: int) -> bool | str:
     return True
 
 
+def delete_orphan_works(db: Session) -> int:
+    """Delete Works that have no Pack association.
+
+    A Work is considered orphan when none of its Characters appear in
+    ``pack_character``. Characters belonging to a deleted Work are
+    unlinked (``work_id`` set to NULL) — matching the single-Work delete
+    behavior.
+
+    Returns:
+        Number of Works actually deleted.
+    """
+    linked_subq = (
+        select(Character.work_id)
+        .join(PackCharacter, PackCharacter.character_id == Character.id)
+        .where(col(Character.work_id).is_not(None))
+        .distinct()
+    )
+    orphans = db.exec(
+        select(Work).where(col(Work.id).notin_(linked_subq)),
+    ).all()
+    if not orphans:
+        return 0
+
+    orphan_ids = [w.id for w in orphans]
+    chars = db.exec(
+        select(Character).where(col(Character.work_id).in_(orphan_ids)),
+    ).all()
+    for ch in chars:
+        ch.work_id = None
+        db.add(ch)
+    for w in orphans:
+        db.delete(w)
+    db.commit()
+    return len(orphans)
+
+
 # ===================================================================
 # Character
 # ===================================================================
@@ -187,6 +223,51 @@ def delete_character(db: Session, char_id: int) -> bool | str:
     return True
 
 
+def delete_orphan_characters(db: Session) -> int:
+    """Delete Characters that have no Pack association.
+
+    A Character qualifies for deletion only when both:
+      * no row in ``pack_character`` references it, AND
+      * none of its Outfits appear in ``pack_outfit``.
+
+    The second guard prevents losing Outfits that are still referenced
+    by Packs through cascade deletion. Outfits that are themselves
+    orphan are removed alongside their parent Character.
+
+    Returns:
+        Number of Characters actually deleted.
+    """
+    char_linked = select(PackCharacter.character_id).distinct()
+    outfit_linked = select(PackOutfit.outfit_id).distinct()
+
+    # Characters that have at least one pack-linked outfit — must be skipped.
+    chars_with_linked_outfits = (
+        select(Outfit.character_id)
+        .where(col(Outfit.id).in_(outfit_linked))
+        .distinct()
+    )
+
+    orphans = db.exec(
+        select(Character).where(
+            col(Character.id).notin_(char_linked),
+            col(Character.id).notin_(chars_with_linked_outfits),
+        ),
+    ).all()
+    if not orphans:
+        return 0
+
+    orphan_ids = [c.id for c in orphans]
+    outfits = db.exec(
+        select(Outfit).where(col(Outfit.character_id).in_(orphan_ids)),
+    ).all()
+    for outfit in outfits:
+        db.delete(outfit)
+    for ch in orphans:
+        db.delete(ch)
+    db.commit()
+    return len(orphans)
+
+
 # ===================================================================
 # Outfit
 # ===================================================================
@@ -275,6 +356,22 @@ def delete_outfit(db: Session, outfit_id: int) -> bool | str:
     return True
 
 
+def delete_orphan_outfits(db: Session) -> int:
+    """Delete Outfits that have no Pack association.
+
+    Returns:
+        Number of Outfits actually deleted.
+    """
+    linked_subq = select(PackOutfit.outfit_id).distinct()
+    orphans = db.exec(
+        select(Outfit).where(col(Outfit.id).notin_(linked_subq)),
+    ).all()
+    for outfit in orphans:
+        db.delete(outfit)
+    db.commit()
+    return len(orphans)
+
+
 # ===================================================================
 # Tag
 # ===================================================================
@@ -349,6 +446,22 @@ def delete_tag(db: Session, tag_id: int) -> bool | str:
     db.delete(tag)
     db.commit()
     return True
+
+
+def delete_orphan_tags(db: Session) -> int:
+    """Delete Tags that have no Pack association.
+
+    Returns:
+        Number of Tags actually deleted.
+    """
+    linked_subq = select(PackTag.tag_id).distinct()
+    orphans = db.exec(
+        select(Tag).where(col(Tag.id).notin_(linked_subq)),
+    ).all()
+    for tag in orphans:
+        db.delete(tag)
+    db.commit()
+    return len(orphans)
 
 
 # ===================================================================

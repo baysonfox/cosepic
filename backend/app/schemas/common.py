@@ -14,3 +14,9 @@ class PaginatedResponse(BaseModel, Generic[T]):
     total: int
     page: int
     page_size: int
+
+
+class DeleteOrphansResponse(BaseModel):
+    """Response body for bulk-orphan deletion endpoints."""
+
+    deleted: int
