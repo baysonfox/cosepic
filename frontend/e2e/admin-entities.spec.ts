@@ -120,6 +120,37 @@ test("admin characters page supports create edit and delete", async ({ page }) =
   await deleteSimpleEntity(page, updatedName);
 });
 
+test("admin tags page deletes orphan tags via Delete orphans button", async ({ page, request }) => {
+  // Seed two orphan tags directly via the API so this test does not
+  // depend on the (unrelated) Create dialog flow used elsewhere in
+  // this file. We hit the Next.js proxy so we land in the same backend
+  // the page consumes.
+  const stamp = Date.now();
+  const orphanA = `Playwright Orphan Tag A ${stamp}`;
+  const orphanB = `Playwright Orphan Tag B ${stamp}`;
+  for (const name of [orphanA, orphanB]) {
+    const res = await request.post("http://127.0.0.1:3000/api/tags", {
+      data: { name },
+    });
+    expect(res.status()).toBe(201);
+  }
+
+  await page.goto("/admin/tags");
+  await expect(page.getByRole("heading", { name: "Tags" })).toBeVisible();
+  // Wait for the seeded row to confirm the list query has finished and
+  // the Delete orphans button is enabled.
+  await expect(page.getByRole("row", { name: new RegExp(orphanA) })).toBeVisible();
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Delete orphans" }).click();
+
+  await expect(page.getByText(/Deleted \d+ orphan record/)).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("row", { name: new RegExp(orphanA) })).not.toBeVisible();
+  await expect(page.getByRole("row", { name: new RegExp(orphanB) })).not.toBeVisible();
+});
+
 test("admin outfits page supports create edit and delete", async ({ page }) => {
   const workName = `Outfit Work ${Date.now()}`;
   const characterName = `Outfit Character ${Date.now()}`;
