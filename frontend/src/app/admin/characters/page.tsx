@@ -8,6 +8,7 @@ import { clientFetch } from "@/lib/api/client";
 import {
   createCharacter,
   deleteCharacter,
+  deleteOrphanCharacters,
   listCharacters,
   updateCharacter,
 } from "@/lib/api/characters";
@@ -96,6 +97,8 @@ export default function AdminCharactersPage() {
       createItem={(payload) => createCharacter(payload, clientFetch)}
       updateItem={(id, payload) => updateCharacter(id, payload, clientFetch)}
       deleteItem={(id) => deleteCharacter(id, clientFetch)}
+      deleteOrphansItem={() => deleteOrphanCharacters(clientFetch)}
+      deleteOrphansConfirmMessage="Delete every character with no pack? Characters whose outfits are still in a pack are skipped."
       getItemId={(item) => item.id}
       getItemName={(item) => item.name}
       toFormValues={(item) => ({

@@ -6,6 +6,7 @@ import { clientFetch } from "@/lib/api/client";
 import {
   createCoser,
   deleteCoser,
+  deleteOrphanCosers,
   listCosers,
   updateCoser,
 } from "@/lib/api/cosers";
@@ -50,6 +51,8 @@ export default function AdminCosersPage() {
       createItem={(payload) => createCoser(payload, clientFetch)}
       updateItem={(id, payload) => updateCoser(id, payload, clientFetch)}
       deleteItem={(id) => deleteCoser(id, clientFetch)}
+      deleteOrphansItem={() => deleteOrphanCosers(clientFetch)}
+      deleteOrphansConfirmMessage="Delete every coser that has no associated pack?"
       getItemId={(item) => item.id}
       getItemName={(item) => item.name}
       toFormValues={(item) => ({ name: item?.name ?? "" })}

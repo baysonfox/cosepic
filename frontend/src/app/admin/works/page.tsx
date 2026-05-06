@@ -5,6 +5,7 @@ import type { DataTableColumn } from "@/components/admin/data-table";
 import { clientFetch } from "@/lib/api/client";
 import {
   createWork,
+  deleteOrphanWorks,
   deleteWork,
   listWorks,
   updateWork,
@@ -51,6 +52,8 @@ export default function AdminWorksPage() {
       createItem={(payload) => createWork(payload, clientFetch)}
       updateItem={(id, payload) => updateWork(id, payload, clientFetch)}
       deleteItem={(id) => deleteWork(id, clientFetch)}
+      deleteOrphansItem={() => deleteOrphanWorks(clientFetch)}
+      deleteOrphansConfirmMessage="Delete every work whose characters have no pack?"
       getItemId={(item) => item.id}
       getItemName={(item) => item.name}
       toFormValues={(item) => ({ name: item?.name ?? "" })}

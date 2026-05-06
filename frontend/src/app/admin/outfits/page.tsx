@@ -7,6 +7,7 @@ import type { EntityFieldDef } from "@/components/admin/entity-form-dialog";
 import { clientFetch } from "@/lib/api/client";
 import {
   createOutfit,
+  deleteOrphanOutfits,
   deleteOutfit,
   listOutfits,
   updateOutfit,
@@ -110,6 +111,8 @@ export default function AdminOutfitsPage() {
       createItem={(payload) => createOutfit(payload, clientFetch)}
       updateItem={(id, payload) => updateOutfit(id, payload, clientFetch)}
       deleteItem={(id) => deleteOutfit(id, clientFetch)}
+      deleteOrphansItem={() => deleteOrphanOutfits(clientFetch)}
+      deleteOrphansConfirmMessage="Delete every outfit that has no associated pack?"
       getItemId={(item) => item.id}
       getItemName={(item) => item.name}
       toFormValues={(item) => ({

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/admin/data-table";
@@ -32,6 +32,19 @@ interface EntityManagerProps<
   createItem: (payload: TCreatePayload) => Promise<unknown>;
   updateItem: (id: number, payload: TUpdatePayload) => Promise<unknown>;
   deleteItem: (id: number) => Promise<void>;
+  /**
+   * Optional bulk-cleanup action that removes every record with no Pack
+   * association. When provided, a "Delete orphans" button is rendered
+   * next to "Create" and triggers a confirmation dialog before calling
+   * this function. The returned `deleted` count is shown inline.
+   */
+  deleteOrphansItem?: () => Promise<{ deleted: number }>;
+  /**
+   * Confirmation message shown in the browser confirm dialog before
+   * deleting orphans. Defaults to a generic prompt referencing
+   * {@link title}.
+   */
+  deleteOrphansConfirmMessage?: string;
   getItemId: (item: T) => number;
   getItemName: (item: T) => string;
   toFormValues: (item: T | null) => Record<string, string>;
@@ -84,6 +97,8 @@ function EntityManagerContent<
   createItem,
   updateItem,
   deleteItem,
+  deleteOrphansItem,
+  deleteOrphansConfirmMessage,
   getItemId,
   getItemName,
   toFormValues,
@@ -101,13 +116,22 @@ function EntityManagerContent<
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogSeed, setDialogSeed] = useState(0);
   const [editingItem, setEditingItem] = useState<T | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingOrphans, setDeletingOrphans] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Pin the latest fetcher in a ref so the load effect can stay
+  // dependency-free w.r.t. an inline `listItems={...}` prop. Without
+  // this, parent pages that pass arrow functions retrigger reloads on
+  // every render, which manifests as a perpetual "Loading..." state.
+  const listItemsRef = useRef(listItems);
+  listItemsRef.current = listItems;
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +139,7 @@ function EntityManagerContent<
     async function load() {
       setLoading(true);
       try {
-        const data = await listItems({ q, page, page_size: pageSize });
+        const data = await listItemsRef.current({ q, page, page_size: pageSize });
         if (!cancelled) {
           setItems(data.items);
           setTotal(data.total);
@@ -139,7 +163,7 @@ function EntityManagerContent<
     return () => {
       cancelled = true;
     };
-  }, [listItems, page, q, reloadKey]);
+  }, [page, q, reloadKey]);
 
   const dialogTitle = useMemo(
     () => (editingItem ? `Edit ${title}` : `Create ${title}`),
@@ -218,6 +242,43 @@ function EntityManagerContent<
     }
   }
 
+  async function handleDeleteOrphans() {
+    if (!deleteOrphansItem) return;
+    const message =
+      deleteOrphansConfirmMessage ??
+      `Delete every ${title.toLowerCase().replace(/s$/, "")} that has no associated pack?`;
+    if (!window.confirm(message)) {
+      return;
+    }
+
+    setDeletingOrphans(true);
+    try {
+      const { deleted } = await deleteOrphansItem();
+      setStatusMessage(
+        deleted === 0
+          ? "No orphan records to delete."
+          : `Deleted ${deleted} orphan record${deleted === 1 ? "" : "s"}.`,
+      );
+      setErrorMessage(null);
+      // After bulk delete the current page may overshoot; reset to page 1
+      // when we are not already there.
+      if (page > 1) {
+        const next = new URLSearchParams(searchParams.toString());
+        next.delete("page");
+        const qs = next.toString();
+        router.push(qs ? `${pathname}?${qs}` : pathname);
+      } else {
+        setReloadKey((value) => value + 1);
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError ? error.detail : "Failed to delete orphan records.",
+      );
+    } finally {
+      setDeletingOrphans(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -226,13 +287,28 @@ function EntityManagerContent<
           <p className="text-sm text-muted-foreground">{description}</p>
         </div>
 
-        <Button type="button" onClick={openCreate}>
-          Create
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {deleteOrphansItem && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void handleDeleteOrphans()}
+              disabled={deletingOrphans || loading}
+            >
+              {deletingOrphans ? "Deleting..." : "Delete orphans"}
+            </Button>
+          )}
+          <Button type="button" onClick={openCreate}>
+            Create
+          </Button>
+        </div>
       </div>
 
       <SearchInput placeholder={searchPlaceholder} />
 
+      {statusMessage && (
+        <p className="text-sm text-muted-foreground">{statusMessage}</p>
+      )}
       {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 
       <DataTable

@@ -7,6 +7,7 @@ import type { EntityFieldDef } from "@/components/admin/entity-form-dialog";
 import { clientFetch } from "@/lib/api/client";
 import {
   createTag,
+  deleteOrphanTags,
   deleteTag,
   listTags,
   updateTag,
@@ -70,6 +71,8 @@ export default function AdminTagsPage() {
       createItem={(payload) => createTag(payload, clientFetch)}
       updateItem={(id, payload) => updateTag(id, payload, clientFetch)}
       deleteItem={(id) => deleteTag(id, clientFetch)}
+      deleteOrphansItem={() => deleteOrphanTags(clientFetch)}
+      deleteOrphansConfirmMessage="Delete every tag that has no associated pack?"
       getItemId={(item) => item.id}
       getItemName={(item) => item.name}
       toFormValues={(item) => ({
