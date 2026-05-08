@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import HALFVEC
+from sqlalchemy import BigInteger
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -16,7 +17,7 @@ class Asset(SQLModel, table=True):
     asset_type: str = Field(max_length=10, nullable=False)  # "image" | "video"
     file_name: str = Field(max_length=512, nullable=False)
     relative_path: str = Field(max_length=1024, nullable=False)
-    size_bytes: int = Field(default=0)
+    size_bytes: int = Field(default=0, sa_type=BigInteger)
     width: int | None = Field(default=None)
     height: int | None = Field(default=None)
     duration_ms: int | None = Field(default=None)

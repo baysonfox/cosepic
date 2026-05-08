@@ -34,6 +34,8 @@ def scan_root_directory(db: Session, root_path: str) -> ImportBatch:
     candidates = []
     if os.path.isdir(root_path):
         for entry in sorted(os.listdir(root_path)):
+            if entry.startswith("."):
+                continue
             full_path = os.path.join(root_path, entry)
             if not os.path.isdir(full_path):
                 continue

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+from sqlalchemy import BigInteger
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -39,7 +40,7 @@ class ImportCandidate(SQLModel, table=True):
     detected_character_names: str | None = Field(default=None, max_length=512)
     photo_count: int = Field(default=0)
     video_count: int = Field(default=0)
-    total_size_bytes: int = Field(default=0)
+    total_size_bytes: int = Field(default=0, sa_type=BigInteger)
     existing_pack_id: int | None = Field(default=None)
     status: str = Field(default="pending", max_length=20)
     created_at: datetime = Field(

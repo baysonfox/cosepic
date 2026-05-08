@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+from sqlalchemy import BigInteger
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -19,7 +20,7 @@ class Pack(SQLModel, table=True):
     cover_asset_id: int | None = Field(default=None, foreign_key="assets.id")
     photo_count: int = Field(default=0)
     video_count: int = Field(default=0)
-    total_size_bytes: int = Field(default=0)
+    total_size_bytes: int = Field(default=0, sa_type=BigInteger)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
     )
