@@ -4,10 +4,9 @@
 
 import type {
   CancelImportResult,
-  ImportBatchOut,
-  ImportCandidateOut,
-  ImportCandidateUpdate,
+  ImportCommitCandidate,
   ImportCommitResult,
+  ScanResult,
 } from "./types";
 
 type Fetcher = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -15,7 +14,7 @@ type Fetcher = <T>(path: string, init?: RequestInit) => Promise<T>;
 export async function scanImport(
   rootPath: string,
   fetcher: Fetcher,
-): Promise<ImportBatchOut> {
+): Promise<ScanResult> {
   return fetcher("/api/v1/imports/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -23,38 +22,18 @@ export async function scanImport(
   });
 }
 
-export async function getBatch(
-  batchId: number,
+export async function commitImport(
+  candidates: ImportCommitCandidate[],
+  skipDuplicateCheck: boolean,
   fetcher: Fetcher,
-): Promise<ImportBatchOut> {
-  return fetcher(`/api/v1/imports/${batchId}`);
-}
-
-export async function updateCandidate(
-  batchId: number,
-  candidateId: number,
-  data: ImportCandidateUpdate,
-  fetcher: Fetcher,
-): Promise<ImportCandidateOut> {
-  return fetcher(`/api/v1/imports/${batchId}/candidates/${candidateId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-}
-
-export async function commitBatch(
-  batchId: number,
-  fetcher: Fetcher,
-  skipDuplicateCheck?: boolean,
 ): Promise<ImportCommitResult> {
-  const params = new URLSearchParams();
-  if (skipDuplicateCheck) {
-    params.set("skip_duplicate_check", "true");
-  }
-  const url = `/api/v1/imports/${batchId}/commit${params.toString() ? `?${params.toString()}` : ""}`;
-  return fetcher(url, {
+  return fetcher("/api/v1/imports/commit", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      candidates,
+      skip_duplicate_check: skipDuplicateCheck,
+    }),
   });
 }
 

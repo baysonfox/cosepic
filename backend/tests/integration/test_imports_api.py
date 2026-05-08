@@ -1,4 +1,4 @@
-"""Integration tests for the import workflow: scan → edit → commit."""
+"""Integration tests for the import workflow: scan → commit."""
 
 import os
 import tempfile
@@ -50,11 +50,10 @@ def media_root():
 
 
 class TestImportScan:
-    def test_scan_creates_batch_with_candidates(self, client, media_root):
+    def test_scan_returns_candidates(self, client, media_root):
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        assert r.status_code == 201
+        assert r.status_code == 200
         data = r.json()
-        assert data["status"] == "ready"
         assert data["total_candidates"] == 4
         assert len(data["candidates"]) == 4
 
@@ -76,7 +75,7 @@ class TestImportScan:
 
         c3 = candidates["CoserOriginal - 原创 - 白兔女仆 5p"]
         assert c3["detected_work_name"] == "原创"
-        assert c3["detected_title"] == "白兔女仆"
+        assert c3["detected_title"] == "CoserOriginal - 原创 - 白兔女仆"
         assert c3["detected_character_names"] == "OriginalCharacter"
 
     def test_scan_detects_file_stats(self, client, media_root):
@@ -91,91 +90,74 @@ class TestImportScan:
         names = [c["folder_name"] for c in r.json()["candidates"]]
         assert "random_folder" in names
 
-
-class TestImportEdit:
-    def test_update_candidate(self, client, media_root):
+    def test_scan_returns_root_path(self, client, media_root):
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        cid = r.json()["candidates"][0]["id"]
-        bid = r.json()["id"]
-
-        r = client.patch(
-            f"/api/v1/imports/{bid}/candidates/{cid}",
-            json={"detected_title": "Custom Title", "status": "selected"},
-        )
-        assert r.status_code == 200
-        assert r.json()["detected_title"] == "Custom Title"
-        assert r.json()["status"] == "selected"
+        assert r.json()["root_path"] == media_root
 
 
 class TestImportCommit:
     def test_commit_creates_packs(self, client, db, media_root):
-        # Scan
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
         candidates = r.json()["candidates"]
 
-        # Select first two candidates
-        for c in candidates[:2]:
-            client.patch(
-                f"/api/v1/imports/{batch_id}/candidates/{c['id']}",
-                json={"status": "selected"},
-            )
-
-        # Commit
-        r = client.post(f"/api/v1/imports/{batch_id}/commit")
+        # Commit first two candidates
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": [
+                {k: v for k, v in c.items() if k != "existing_pack_id"}
+                for c in candidates[:2]
+            ],
+            "skip_duplicate_check": True,
+        })
         assert r.status_code == 200
         assert r.json()["imported_count"] == 2
         assert len(r.json()["pack_ids"]) == 2
 
     def test_commit_creates_entities(self, client, db, media_root):
-        r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
-
-        # Select first candidate (Hokunaimeko)
-        first = r.json()["candidates"][0]
-        if "Hokunaimeko" not in (first.get("detected_coser_names") or ""):
-            # Find the right candidate
-            for c in r.json()["candidates"]:
-                if "Hokunaimeko" in (c.get("detected_coser_names") or ""):
-                    first = c
-                    break
-
-        client.patch(
-            f"/api/v1/imports/{batch_id}/candidates/{first['id']}",
-            json={"status": "selected"},
-        )
-        client.post(f"/api/v1/imports/{batch_id}/commit")
-
-        # Verify Coser was created
-        coser = db.exec(
-            __import__("sqlmodel", fromlist=["select"]).select(Coser).where(Coser.name == "Hokunaimeko"),
-        ).first()
-        assert coser is not None
-
-        # Verify Work was created
-        work = db.exec(
-            __import__("sqlmodel", fromlist=["select"]).select(Work).where(Work.name == "明日方舟"),
-        ).first()
-        assert work is not None
-
-    def test_commit_original_work_uses_placeholder_character(self, client, db, media_root):
         from sqlmodel import select
 
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
-        original = next(
-            c for c in r.json()["candidates"] if c["folder_name"] == "CoserOriginal - 原创 - 白兔女仆 5p"
-        )
 
-        client.patch(
-            f"/api/v1/imports/{batch_id}/candidates/{original['id']}",
-            json={"status": "selected"},
+        hokunaimeko = next(
+            c for c in r.json()["candidates"]
+            if "Hokunaimeko" in (c.get("detected_coser_names") or "")
         )
-        r = client.post(f"/api/v1/imports/{batch_id}/commit")
+        payload = {k: v for k, v in hokunaimeko.items() if k != "existing_pack_id"}
+
+        client.post("/api/v1/imports/commit", json={
+            "candidates": [payload],
+            "skip_duplicate_check": True,
+        })
+
+        coser = db.exec(
+            select(Coser).where(Coser.name == "Hokunaimeko"),
+        ).first()
+        assert coser is not None
+
+        work = db.exec(
+            select(Work).where(Work.name == "明日方舟"),
+        ).first()
+        assert work is not None
+
+    def test_commit_original_work_uses_placeholder_character(
+        self, client, db, media_root,
+    ):
+        from sqlmodel import select
+
+        r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
+        original = next(
+            c for c in r.json()["candidates"]
+            if c["folder_name"] == "CoserOriginal - 原创 - 白兔女仆 5p"
+        )
+        payload = {k: v for k, v in original.items() if k != "existing_pack_id"}
+
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": [payload],
+            "skip_duplicate_check": True,
+        })
         pack_id = r.json()["pack_ids"][0]
 
         pack = client.get(f"/api/v1/packs/{pack_id}").json()
-        assert pack["title"] == "白兔女仆"
+        assert pack["title"] == "CoserOriginal - 原创 - 白兔女仆"
 
         work = db.exec(select(Work).where(Work.name == "原创")).first()
         assert work is not None
@@ -192,15 +174,13 @@ class TestImportCommit:
         from sqlmodel import select
 
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
-
-        # Select first candidate
         first = r.json()["candidates"][0]
-        client.patch(
-            f"/api/v1/imports/{batch_id}/candidates/{first['id']}",
-            json={"status": "selected"},
-        )
-        r = client.post(f"/api/v1/imports/{batch_id}/commit")
+        payload = {k: v for k, v in first.items() if k != "existing_pack_id"}
+
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": [payload],
+            "skip_duplicate_check": True,
+        })
         pack_id = r.json()["pack_ids"][0]
 
         assets = db.exec(select(Asset).where(Asset.pack_id == pack_id)).all()
@@ -210,22 +190,25 @@ class TestImportCommit:
         from sqlmodel import select
 
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
 
-        # Select candidate with coser info
-        for c in r.json()["candidates"]:
-            if c.get("detected_coser_names"):
-                client.patch(
-                    f"/api/v1/imports/{batch_id}/candidates/{c['id']}",
-                    json={"status": "selected"},
-                )
-                break
+        coser_candidate = next(
+            c for c in r.json()["candidates"]
+            if c.get("detected_coser_names")
+        )
+        payload = {
+            k: v for k, v in coser_candidate.items() if k != "existing_pack_id"
+        }
 
-        r = client.post(f"/api/v1/imports/{batch_id}/commit")
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": [payload],
+            "skip_duplicate_check": True,
+        })
         pack_id = r.json()["pack_ids"][0]
 
         suggestions = db.exec(
-            select(MetadataSuggestion).where(MetadataSuggestion.pack_id == pack_id),
+            select(MetadataSuggestion).where(
+                MetadataSuggestion.pack_id == pack_id,
+            ),
         ).all()
         assert len(suggestions) > 0
         assert all(s.source == "folder_parser" for s in suggestions)
@@ -233,14 +216,13 @@ class TestImportCommit:
 
     def test_commit_sets_cover_asset(self, client, db, media_root):
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
-
         first = r.json()["candidates"][0]
-        client.patch(
-            f"/api/v1/imports/{batch_id}/candidates/{first['id']}",
-            json={"status": "selected"},
-        )
-        r = client.post(f"/api/v1/imports/{batch_id}/commit")
+        payload = {k: v for k, v in first.items() if k != "existing_pack_id"}
+
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": [payload],
+            "skip_duplicate_check": True,
+        })
         pack_id = r.json()["pack_ids"][0]
 
         pack = client.get(f"/api/v1/packs/{pack_id}").json()
@@ -250,35 +232,35 @@ class TestImportCommit:
         from sqlmodel import select
 
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
-
         first = r.json()["candidates"][0]
-        client.patch(
-            f"/api/v1/imports/{batch_id}/candidates/{first['id']}",
-            json={"status": "selected"},
-        )
-        r = client.post(f"/api/v1/imports/{batch_id}/commit")
+        payload = {k: v for k, v in first.items() if k != "existing_pack_id"}
+
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": [payload],
+            "skip_duplicate_check": True,
+        })
         pack_id = r.json()["pack_ids"][0]
 
         assets = db.exec(select(Asset).where(Asset.pack_id == pack_id)).all()
-        image_assets = [asset for asset in assets if asset.asset_type == "image"]
+        image_assets = [
+            asset for asset in assets if asset.asset_type == "image"
+        ]
         assert image_assets
-        assert all(asset.thumbnail_status == "generated" for asset in image_assets)
+        assert all(
+            asset.thumbnail_status == "generated" for asset in image_assets
+        )
         assert all(asset.blurhash is not None for asset in image_assets)
 
-    def test_batch_status_after_commit(self, client, media_root):
+    def test_commit_all_candidates(self, client, db, media_root):
         r = client.post("/api/v1/imports/scan", json={"root_path": media_root})
-        batch_id = r.json()["id"]
+        candidates = r.json()["candidates"]
+        payload = [
+            {k: v for k, v in c.items() if k != "existing_pack_id"}
+            for c in candidates
+        ]
 
-        # Select all
-        for c in r.json()["candidates"]:
-            client.patch(
-                f"/api/v1/imports/{batch_id}/candidates/{c['id']}",
-                json={"status": "selected"},
-            )
-
-        client.post(f"/api/v1/imports/{batch_id}/commit")
-
-        r = client.get(f"/api/v1/imports/{batch_id}")
-        assert r.json()["status"] == "done"
+        r = client.post("/api/v1/imports/commit", json={
+            "candidates": payload,
+            "skip_duplicate_check": True,
+        })
         assert r.json()["imported_count"] == 4

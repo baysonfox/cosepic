@@ -3,7 +3,6 @@
 from app.models.asset import Asset
 from app.models.character import Character
 from app.models.coser import Coser, CoserAlias
-from app.models.import_batch import ImportBatch, ImportCandidate
 from app.models.outfit import Outfit
 from app.models.pack import Pack
 from app.models.relations import PackCharacter, PackCoser, PackOutfit, PackTag
@@ -17,8 +16,6 @@ __all__ = [
     "Character",
     "Coser",
     "CoserAlias",
-    "ImportBatch",
-    "ImportCandidate",
     "MetadataSuggestion",
     "Outfit",
     "Pack",

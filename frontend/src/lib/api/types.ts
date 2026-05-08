@@ -237,9 +237,7 @@ export interface TagUpdate {
 // Import
 // ---------------------------------------------------------------------------
 
-export interface ImportCandidateOut {
-  id: number;
-  batch_id: number;
+export interface ScanCandidate {
   folder_path: string;
   folder_name: string;
   detected_title: string | null;
@@ -250,27 +248,24 @@ export interface ImportCandidateOut {
   video_count: number;
   total_size_bytes: number;
   existing_pack_id: number | null;
-  status: string;
-  created_at: string;
 }
 
-export interface ImportCandidateUpdate {
-  detected_title?: string | null;
-  detected_coser_names?: string | null;
-  detected_work_name?: string | null;
-  detected_character_names?: string | null;
-  status?: string | null;
-}
-
-export interface ImportBatchOut {
-  id: number;
+export interface ScanResult {
   root_path: string;
-  status: string;
   total_candidates: number;
-  imported_count: number;
-  created_at: string;
-  finished_at: string | null;
-  candidates: ImportCandidateOut[];
+  candidates: ScanCandidate[];
+}
+
+export interface ImportCommitCandidate {
+  folder_path: string;
+  folder_name: string;
+  detected_title: string | null;
+  detected_coser_names: string | null;
+  detected_work_name: string | null;
+  detected_character_names: string | null;
+  photo_count: number;
+  video_count: number;
+  total_size_bytes: number;
 }
 
 export interface ImportCommitResult {
@@ -284,8 +279,6 @@ export interface ImportCommitResult {
 
 export interface CancelImportResult {
   pack_id: number;
-  batch_id: number | null;
-  candidate_id: number | null;
 }
 
 export interface DuplicateItem {

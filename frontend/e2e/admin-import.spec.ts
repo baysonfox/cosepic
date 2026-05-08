@@ -12,7 +12,7 @@ test("admin imports flow scans edits selects and commits a pack", async ({ page 
     .fill("/Users/baysonfox/cosepic/backend/playwright_data/imports");
   await page.getByRole("button", { name: "Scan" }).click();
 
-  await expect(page.getByText("Batch summary")).toBeVisible();
+  await expect(page.getByText("Scan summary")).toBeVisible();
   await expect(
     page.getByLabel("Select 鳗鱼霏儿 - 明日方舟 - 阿米娅 2p"),
   ).toBeVisible();

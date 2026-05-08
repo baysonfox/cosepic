@@ -54,8 +54,6 @@ TABLES = (
     "pack_character",
     "pack_outfit",
     "pack_tag",
-    "import_batches",
-    "import_candidates",
     "metadata_suggestions",
     "tasks",
 )

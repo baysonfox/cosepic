@@ -4,17 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type {
-  ImportCandidateOut,
-  ImportCandidateUpdate,
-} from "@/lib/api/types";
+import type { ScanCandidate } from "@/lib/api/types";
 import {
   ORIGINAL_CHARACTER_NAME,
   ORIGINAL_WORK_NAME,
@@ -22,15 +12,13 @@ import {
 } from "@/lib/utils";
 
 interface ImportCandidateEditorProps {
-  candidate: ImportCandidateOut;
-  saving: boolean;
-  onSave: (update: ImportCandidateUpdate) => Promise<void> | void;
+  candidate: ScanCandidate;
+  onApply: (update: Partial<ScanCandidate>) => void;
 }
 
 export function ImportCandidateEditor({
   candidate,
-  saving,
-  onSave,
+  onApply,
 }: ImportCandidateEditorProps) {
   const [title, setTitle] = useState(candidate.detected_title ?? "");
   const [cosers, setCosers] = useState(candidate.detected_coser_names ?? "");
@@ -41,7 +29,6 @@ export function ImportCandidateEditor({
       candidate.detected_character_names,
     ) ?? "",
   );
-  const [status, setStatus] = useState(candidate.status);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +41,6 @@ export function ImportCandidateEditor({
         candidate.detected_character_names,
       ) ?? "",
     );
-    setStatus(candidate.status);
     setError(null);
   }, [candidate]);
 
@@ -67,12 +53,11 @@ export function ImportCandidateEditor({
         (formatImportCharacterNames(
           candidate.detected_work_name,
           candidate.detected_character_names,
-        ) ?? "") ||
-      status !== candidate.status,
-    [candidate, characters, cosers, status, title, work],
+        ) ?? ""),
+    [candidate, characters, cosers, title, work],
   );
 
-  async function handleSubmit() {
+  function handleSubmit() {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       setError("Title is required.");
@@ -80,7 +65,7 @@ export function ImportCandidateEditor({
     }
 
     setError(null);
-    await onSave({
+    onApply({
       detected_title: trimmedTitle,
       detected_coser_names: cosers.trim() || null,
       detected_work_name: work.trim() || null,
@@ -88,7 +73,6 @@ export function ImportCandidateEditor({
         work.trim() === ORIGINAL_WORK_NAME
           ? ORIGINAL_CHARACTER_NAME
           : characters.trim() || null,
-      status,
     });
   }
 
@@ -106,20 +90,13 @@ export function ImportCandidateEditor({
         </label>
 
         <label className="space-y-2">
-          <span className="text-sm font-medium">Status</span>
-          <Select
-            value={status}
-            onValueChange={(value) => setStatus(String(value ?? "pending"))}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">pending</SelectItem>
-              <SelectItem value="selected">selected</SelectItem>
-              <SelectItem value="imported">imported</SelectItem>
-            </SelectContent>
-          </Select>
+          <span className="text-sm font-medium">Work name</span>
+          <Input
+            aria-label="Candidate work name"
+            value={work}
+            onChange={(event) => setWork(event.target.value)}
+            placeholder="Work name"
+          />
         </label>
       </div>
 
@@ -130,16 +107,6 @@ export function ImportCandidateEditor({
           value={cosers}
           onChange={(event) => setCosers(event.target.value)}
           placeholder="Comma-separated coser names"
-        />
-      </label>
-
-      <label className="space-y-2">
-        <span className="text-sm font-medium">Work name</span>
-        <Input
-          aria-label="Candidate work name"
-          value={work}
-          onChange={(event) => setWork(event.target.value)}
-          placeholder="Work name"
         />
       </label>
 
@@ -158,8 +125,8 @@ export function ImportCandidateEditor({
         <div className="text-sm text-muted-foreground">
           {hasChanges ? "Unsaved changes" : "No local changes"}
         </div>
-        <Button type="button" onClick={() => void handleSubmit()} disabled={saving}>
-          {saving ? "Saving..." : "Apply"}
+        <Button type="button" onClick={handleSubmit}>
+          Apply
         </Button>
       </div>
 

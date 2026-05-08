@@ -235,7 +235,6 @@ def delete_pack(db: Session, pack_id: int) -> bool | str:
     from app.models.asset import Asset
     from app.models.coser import CoserAlias
     from app.models.duplicate_check import PackDuplicateCheck
-    from app.models.import_batch import ImportCandidate
     from app.models.suggestion import MetadataSuggestion
     from app.models.task import Task
 
@@ -280,13 +279,6 @@ def delete_pack(db: Session, pack_id: int) -> bool | str:
         )
     ).all():
         db.delete(dc)
-
-    # Null stale references in import candidates
-    for ic in db.exec(
-        select(ImportCandidate).where(ImportCandidate.existing_pack_id == pack_id)
-    ).all():
-        ic.existing_pack_id = None
-        db.add(ic)
 
     # Delete tasks referencing this pack
     for t in db.exec(

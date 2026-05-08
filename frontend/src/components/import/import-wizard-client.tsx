@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, ChevronUp, TriangleAlert } from "lucide-react";
 import { ImportCandidateEditor } from "@/components/import/import-candidate-editor";
 import { ImportCommitBar } from "@/components/import/import-commit-bar";
@@ -16,33 +16,29 @@ import { ApiError, clientFetch } from "@/lib/api/client";
 import { triggerEmbedding } from "@/lib/api/embeddings";
 import {
   cancelImport,
-  commitBatch,
+  commitImport,
   scanImport,
-  updateCandidate,
 } from "@/lib/api/imports";
 import type {
-  ImportBatchOut,
-  ImportCandidateOut,
-  ImportCandidateUpdate,
+  ImportCommitCandidate,
   ImportCommitResult,
   DuplicateItem,
+  ScanCandidate,
+  ScanResult,
 } from "@/lib/api/types";
 import {
   formatBytes,
   formatImportCharacterNames,
 } from "@/lib/utils";
 
-function CandidateStatusBadge({ status }: { status: string }) {
-  if (status === "selected") {
+function CandidateStatusBadge({ selected }: { selected: boolean }) {
+  if (selected) {
     return <Badge>selected</Badge>;
   }
-  if (status === "imported") {
-    return <Badge variant="secondary">imported</Badge>;
-  }
-  return <Badge variant="outline">{status}</Badge>;
+  return <Badge variant="outline">pending</Badge>;
 }
 
-function CandidatePreview({ candidate }: { candidate: ImportCandidateOut }) {
+function CandidatePreview({ candidate }: { candidate: ScanCandidate }) {
   return (
     <div className="space-y-2 text-sm">
       <div>
@@ -75,13 +71,15 @@ const PAGE_SIZE = 20;
 
 export function ImportWizardClient() {
   const [rootPath, setRootPath] = useState("");
-  const [batch, setBatch] = useState<ImportBatchOut | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [savingCandidateId, setSavingCandidateId] = useState<number | null>(null);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [editedMetadata, setEditedMetadata] = useState<Map<string, Partial<ScanCandidate>>>(new Map());
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ImportCommitResult | null>(null);
+  const [committedTitles, setCommittedTitles] = useState<Map<number, string>>(new Map());
   const [page, setPage] = useState(1);
   const [comparisonDialogOpen, setComparisonDialogOpen] = useState(false);
   const [selectedDuplicate, setSelectedDuplicate] = useState<DuplicateItem | null>(null);
@@ -91,20 +89,27 @@ export function ImportWizardClient() {
   const [cancellingPackIds, setCancellingPackIds] = useState<Set<number>>(new Set());
   const [confirmingPackIds, setConfirmingPackIds] = useState<Set<number>>(new Set());
 
+  const effectiveCandidates = useMemo(() => {
+    if (!scanResult) return [];
+    return scanResult.candidates.map((c) => {
+      const edits = editedMetadata.get(c.folder_path);
+      return edits ? { ...c, ...edits } : c;
+    });
+  }, [scanResult, editedMetadata]);
+
   const { newCandidates, existingCandidates } = useMemo(() => {
-    if (!batch) return { newCandidates: [], existingCandidates: [] };
-    const newOnes = batch.candidates.filter(
-      c => !c.existing_pack_id && c.status !== "imported",
+    const newOnes = effectiveCandidates.filter(
+      (c) => !c.existing_pack_id,
     );
-    const existing = batch.candidates.filter(
-      c => c.existing_pack_id || c.status === "imported",
+    const existing = effectiveCandidates.filter(
+      (c) => c.existing_pack_id,
     );
     return { newCandidates: newOnes, existingCandidates: existing };
-  }, [batch]);
+  }, [effectiveCandidates]);
 
   const selectedCount = useMemo(
-    () => newCandidates.filter((candidate) => candidate.status === "selected").length,
-    [newCandidates],
+    () => newCandidates.filter((c) => selectedKeys.has(c.folder_path)).length,
+    [newCandidates, selectedKeys],
   );
 
   const totalPages = Math.max(1, Math.ceil(newCandidates.length / PAGE_SIZE));
@@ -184,10 +189,12 @@ export function ImportWizardClient() {
     setScanning(true);
     setErrorMessage(null);
     setResult(null);
+    setSelectedKeys(new Set());
+    setEditedMetadata(new Map());
     try {
-      const nextBatch = await scanImport(trimmedRootPath, clientFetch);
-      setBatch(nextBatch);
-      setExpandedId(nextBatch.candidates[0]?.id ?? null);
+      const data = await scanImport(trimmedRootPath, clientFetch);
+      setScanResult(data);
+      setExpandedKey(data.candidates[0]?.folder_path ?? null);
       setPage(1);
     } catch (error) {
       setErrorMessage(
@@ -198,107 +205,77 @@ export function ImportWizardClient() {
     }
   }
 
-  async function patchCandidate(
-    candidateId: number,
-    payload: ImportCandidateUpdate,
-  ) {
-    if (!batch) {
-      return;
-    }
-
-    setSavingCandidateId(candidateId);
-    setErrorMessage(null);
-    try {
-      const updated = await updateCandidate(batch.id, candidateId, payload, clientFetch);
-      setBatch((prev) => {
-        if (!prev) {
-          return prev;
-        }
-        return {
-          ...prev,
-          candidates: prev.candidates.map((candidate) =>
-            candidate.id === candidateId ? updated : candidate,
-          ),
-        };
-      });
-    } catch (error) {
-      setErrorMessage(
-        error instanceof ApiError ? error.detail : "Failed to update candidate.",
-      );
-    } finally {
-      setSavingCandidateId(null);
-    }
-  }
-
-  async function handleToggleSelected(candidate: ImportCandidateOut, checked: boolean) {
-    await patchCandidate(candidate.id, {
-      status: checked ? "selected" : "pending",
+  function handleToggleSelected(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
     });
   }
 
+  function handleSelectAll() {
+    setSelectedKeys(new Set(newCandidates.map((c) => c.folder_path)));
+  }
+
+  function handleSelectPage() {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      for (const c of visibleCandidates) {
+        next.add(c.folder_path);
+      }
+      return next;
+    });
+  }
+
+  function handleClearSelection() {
+    setSelectedKeys(new Set());
+  }
+
+  const handleApplyMetadata = useCallback(
+    (key: string, updates: Partial<ScanCandidate>) => {
+      setEditedMetadata((prev) => {
+        const existing = prev.get(key) ?? {};
+        const next = new Map(prev);
+        next.set(key, { ...existing, ...updates });
+        return next;
+      });
+    },
+    [],
+  );
+
   async function handleCommit() {
-    if (!batch) {
-      return;
-    }
+    if (!scanResult) return;
+
+    const payload: ImportCommitCandidate[] = effectiveCandidates
+      .filter((c) => selectedKeys.has(c.folder_path))
+      .map(({ existing_pack_id: _, ...rest }) => rest);
+
+    if (payload.length === 0) return;
 
     setCommitting(true);
     setErrorMessage(null);
     try {
-      const nextResult = await commitBatch(batch.id, clientFetch, skipDuplicateCheck);
-      setResult(nextResult);
-      setBatch((prev) => {
-        if (!prev) {
-          return prev;
+      const titleMap = new Map<number, string>();
+      const nextResult = await commitImport(payload, skipDuplicateCheck, clientFetch);
+      nextResult.pack_ids.forEach((id, idx) => {
+        const candidate = payload[idx];
+        if (candidate) {
+          titleMap.set(id, candidate.detected_title || candidate.folder_name);
         }
-        return {
-          ...prev,
-          status: "done",
-          imported_count: nextResult.imported_count,
-          candidates: prev.candidates.map((candidate) =>
-            candidate.status === "selected"
-              ? { ...candidate, status: "imported" }
-              : candidate,
-          ),
-        };
       });
+      setResult(nextResult);
+      setCommittedTitles(titleMap);
+      setSelectedKeys(new Set());
     } catch (error) {
       setErrorMessage(
-        error instanceof ApiError ? error.detail : "Failed to commit import batch.",
+        error instanceof ApiError ? error.detail : "Failed to commit import.",
       );
     } finally {
       setCommitting(false);
-    }
-  }
-
-  async function handleSelectAll() {
-    if (!batch) {
-      return;
-    }
-
-    for (const candidate of newCandidates) {
-      if (candidate.status !== "selected") {
-        await patchCandidate(candidate.id, { status: "selected" });
-      }
-    }
-  }
-
-  async function handleSelectPage() {
-    for (const candidate of visibleCandidates) {
-      if (candidate.status !== "selected") {
-        await patchCandidate(candidate.id, { status: "selected" });
-      }
-    }
-  }
-
-  async function handleClearSelection() {
-    if (!batch) {
-      return;
-    }
-
-    for (const candidate of newCandidates) {
-      if (candidate.status === "selected") {
-        await patchCandidate(candidate.id, { status: "pending" });
-      }
     }
   }
 
@@ -333,27 +310,23 @@ export function ImportWizardClient() {
 
       {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 
-      {batch && (
+      {scanResult && (
         <Card>
           <CardHeader>
-            <CardTitle>Batch summary</CardTitle>
+            <CardTitle>Scan summary</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-3 text-sm md:grid-cols-4">
-            <div>
-              <div className="text-muted-foreground">Status</div>
-              <div>{batch.status}</div>
-            </div>
+          <CardContent className="grid gap-3 text-sm md:grid-cols-3">
             <div>
               <div className="text-muted-foreground">Candidates</div>
-              <div>{batch.total_candidates}</div>
+              <div>{scanResult.total_candidates}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Selected</div>
               <div>{selectedCount}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Imported</div>
-              <div>{batch.imported_count}</div>
+              <div className="text-muted-foreground">Root</div>
+              <div className="truncate">{scanResult.root_path}</div>
             </div>
           </CardContent>
         </Card>
@@ -390,14 +363,7 @@ export function ImportWizardClient() {
           </CardHeader>
           <CardContent className="space-y-4">
             {result.duplicate_checks.map(({ pack_id, duplicates }) => {
-              const selectedCandidates = batch?.candidates.filter(
-                c => c.status === "selected",
-              ) ?? [];
-              const packIndex = result.pack_ids.indexOf(pack_id);
-              const packTitle = packIndex >= 0 && selectedCandidates[packIndex]
-                ? selectedCandidates[packIndex].detected_title || selectedCandidates[packIndex].folder_name
-                : `Pack #${pack_id}`;
-
+              const packTitle = committedTitles.get(pack_id) ?? `Pack #${pack_id}`;
               const isCancelling = cancellingPackIds.has(pack_id);
               const isConfirming = confirmingPackIds.has(pack_id);
 
@@ -420,14 +386,14 @@ export function ImportWizardClient() {
                         disabled={isCancelling}
                         onClick={() => handleCancelImport(pack_id)}
                       >
-                      {isCancelling ? "取消中..." : "取消导入"}
+                        {isCancelling ? "取消中..." : "取消导入"}
                       </Button>
                     </div>
                   </div>
                   {duplicates.map((dup, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">
-                        与 "{dup.duplicate_pack_title}" 相似
+                        与 &quot;{dup.duplicate_pack_title}&quot; 相似
                       </span>
                       <div className="flex items-center gap-2">
                         <Badge variant={
@@ -460,7 +426,7 @@ export function ImportWizardClient() {
         currentPackTitle={currentPackTitle}
       />
 
-      {batch && newCandidates.length > 0 && (
+      {scanResult && newCandidates.length > 0 && (
         <div className="space-y-4">
           <ImportPagination
             total={newCandidates.length}
@@ -470,32 +436,24 @@ export function ImportWizardClient() {
           />
 
           {visibleCandidates.map((candidate) => {
-            const expanded = expandedId === candidate.id;
-            const selected = candidate.status === "selected";
-            const saving = savingCandidateId === candidate.id;
+            const key = candidate.folder_path;
+            const expanded = expandedKey === key;
+            const selected = selectedKeys.has(key);
 
             return (
-              <Card key={candidate.id}>
+              <Card key={key}>
                 <CardHeader>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex items-start gap-3">
                       <Checkbox
                         checked={selected}
-                        onCheckedChange={(checked) =>
-                          void handleToggleSelected(candidate, Boolean(checked))
-                        }
+                        onCheckedChange={() => handleToggleSelected(key)}
                         aria-label={`Select ${candidate.folder_name}`}
                       />
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <CardTitle>{candidate.folder_name}</CardTitle>
-                          <CandidateStatusBadge status={candidate.status} />
-                          {candidate.existing_pack_id && (
-                            <Badge variant="destructive" className="gap-1">
-                              <TriangleAlert className="h-3 w-3" />
-                              Existing pack #{candidate.existing_pack_id}
-                            </Badge>
-                          )}
+                          <CandidateStatusBadge selected={selected} />
                         </div>
                         <CandidatePreview candidate={candidate} />
                       </div>
@@ -504,7 +462,7 @@ export function ImportWizardClient() {
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setExpandedId(expanded ? null : candidate.id)}
+                      onClick={() => setExpandedKey(expanded ? null : key)}
                     >
                       {expanded ? (
                         <>
@@ -525,8 +483,7 @@ export function ImportWizardClient() {
                   <CardContent>
                     <ImportCandidateEditor
                       candidate={candidate}
-                      saving={saving}
-                      onSave={(payload) => patchCandidate(candidate.id, payload)}
+                      onApply={(updates) => handleApplyMetadata(key, updates)}
                     />
                   </CardContent>
                 )}
@@ -558,16 +515,14 @@ export function ImportWizardClient() {
               {showExisting && (
                 <CardContent className="space-y-3">
                   {existingCandidates.map((candidate) => (
-                    <div key={candidate.id} className="rounded-lg border p-3 opacity-60">
+                    <div key={candidate.folder_path} className="rounded-lg border p-3 opacity-60">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{candidate.folder_name}</span>
-                        {candidate.existing_pack_id ? (
+                        {candidate.existing_pack_id && (
                           <Badge variant="destructive" className="gap-1">
                             <TriangleAlert className="h-3 w-3" />
                             Existing pack #{candidate.existing_pack_id}
                           </Badge>
-                        ) : (
-                          <Badge variant="secondary">已导入</Badge>
                         )}
                       </div>
                     </div>
@@ -581,12 +536,11 @@ export function ImportWizardClient() {
             totalCount={newCandidates.length}
             selectedCount={selectedCount}
             committing={committing}
-            disabled={savingCandidateId !== null}
             skipDuplicateCheck={skipDuplicateCheck}
             onSkipDuplicateCheckChange={setSkipDuplicateCheck}
-            onSelectAll={() => void handleSelectAll()}
-            onSelectPage={() => void handleSelectPage()}
-            onClear={() => void handleClearSelection()}
+            onSelectAll={handleSelectAll}
+            onSelectPage={handleSelectPage}
+            onClear={handleClearSelection}
             onCommit={() => void handleCommit()}
           />
         </div>

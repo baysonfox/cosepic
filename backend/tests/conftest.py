@@ -23,8 +23,6 @@ from app.models import (  # noqa: F401 — trigger table registration
     Character,
     Coser,
     CoserAlias,
-    ImportBatch,
-    ImportCandidate,
     MetadataSuggestion,
     Outfit,
     Pack,

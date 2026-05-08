@@ -1,20 +1,24 @@
-"""Import service — scan directories and commit import batches."""
+"""Import service — scan directories and commit imports."""
 
 import os
 from datetime import datetime, timezone
 
 from fastapi import BackgroundTasks
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, select
 
 from app.models.asset import Asset
 from app.models.character import Character
 from app.models.coser import Coser, CoserAlias
-from app.models.import_batch import ImportBatch, ImportCandidate
 from app.models.outfit import Outfit
 from app.models.pack import Pack
 from app.models.relations import PackCharacter, PackCoser, PackOutfit
 from app.models.suggestion import MetadataSuggestion
 from app.models.work import Work
+from app.schemas.import_schema import (
+    ImportCandidateInput,
+    ScanCandidateOut,
+    ScanResultOut,
+)
 from app.services import asset_service, embedding_service
 from app.services.dir_parser import (
     ORIGINAL_CHARACTER_NAME,
@@ -24,13 +28,8 @@ from app.services.dir_parser import (
 from app.utils.file_utils import scan_media_dir
 
 
-def scan_root_directory(db: Session, root_path: str) -> ImportBatch:
-    """Scan a root directory and create an import batch with candidates."""
-    batch = ImportBatch(root_path=root_path, status="scanning")
-    db.add(batch)
-    db.commit()
-    db.refresh(batch)
-
+def scan_import_directory(db: Session, root_path: str) -> ScanResultOut:
+    """Scan a root directory and return candidate data without persisting."""
     candidates = []
     if os.path.isdir(root_path):
         for entry in sorted(os.listdir(root_path)):
@@ -43,17 +42,17 @@ def scan_root_directory(db: Session, root_path: str) -> ImportBatch:
             parsed = parse_dir_name(entry)
             stats = scan_media_dir(full_path)
 
-            # Check if already imported
             existing = db.exec(
                 select(Pack).where(Pack.dir_path == full_path),
             ).first()
 
-            candidate = ImportCandidate(
-                batch_id=batch.id,
+            candidates.append(ScanCandidateOut(
                 folder_path=full_path,
                 folder_name=entry,
                 detected_title=parsed.title if parsed else entry,
-                detected_coser_names=",".join(parsed.coser_names) if parsed else None,
+                detected_coser_names=(
+                    ",".join(parsed.coser_names) if parsed else None
+                ),
                 detected_work_name=parsed.work_name if parsed else None,
                 detected_character_names=(
                     ",".join(
@@ -67,71 +66,22 @@ def scan_root_directory(db: Session, root_path: str) -> ImportBatch:
                 video_count=stats["video_count"],
                 total_size_bytes=stats["total_size_bytes"],
                 existing_pack_id=existing.id if existing else None,
-                status="pending",
-            )
-            candidates.append(candidate)
+            ))
 
-    db.add_all(candidates)
-    batch.total_candidates = len(candidates)
-    batch.status = "ready"
-    db.add(batch)
-    db.commit()
-    db.refresh(batch)
-    return batch
+    return ScanResultOut(
+        root_path=root_path,
+        total_candidates=len(candidates),
+        candidates=candidates,
+    )
 
 
-def update_candidate(
+async def commit_import(
     db: Session,
-    candidate_id: int,
-    *,
-    detected_title: str | None = None,
-    detected_coser_names: str | None = None,
-    detected_work_name: str | None = None,
-    detected_character_names: str | None = None,
-    status: str | None = None,
-) -> ImportCandidate | None:
-    """Update a single import candidate."""
-    candidate = db.get(ImportCandidate, candidate_id)
-    if candidate is None:
-        return None
-    if detected_title is not None:
-        candidate.detected_title = detected_title
-    if detected_coser_names is not None:
-        candidate.detected_coser_names = detected_coser_names
-    if detected_work_name is not None:
-        candidate.detected_work_name = detected_work_name
-    if detected_character_names is not None:
-        candidate.detected_character_names = detected_character_names
-    if status is not None:
-        candidate.status = status
-    db.add(candidate)
-    db.commit()
-    db.refresh(candidate)
-    return candidate
-
-
-async def commit_batch(
-    db: Session,
-    batch_id: int,
+    candidates: list[ImportCandidateInput],
     background_tasks: BackgroundTasks,
     skip_duplicate_check: bool = False,
 ) -> dict:
-    """Commit selected candidates in a batch — create Packs and relations."""
-    batch = db.get(ImportBatch, batch_id)
-    if batch is None:
-        return {"error": "not_found"}
-
-    batch.status = "committing"
-    db.add(batch)
-    db.commit()
-
-    candidates = db.exec(
-        select(ImportCandidate).where(
-            ImportCandidate.batch_id == batch_id,
-            ImportCandidate.status == "selected",
-        ),
-    ).all()
-
+    """Commit selected candidates — create Packs and relations."""
     pack_ids = []
     duplicate_checks = []
 
@@ -139,8 +89,6 @@ async def commit_batch(
         pack_id = _import_single_candidate(db, candidate)
         if pack_id:
             pack_ids.append(pack_id)
-            candidate.status = "imported"
-            db.add(candidate)
 
             if skip_duplicate_check:
                 background_tasks.add_task(
@@ -149,7 +97,9 @@ async def commit_batch(
                     pack_id,
                 )
             else:
-                duplicates = await embedding_service.check_pack_duplicates(db, pack_id)
+                duplicates = (
+                    await embedding_service.check_pack_duplicates(db, pack_id)
+                )
                 if duplicates:
                     duplicate_checks.append({
                         "pack_id": pack_id,
@@ -162,20 +112,6 @@ async def commit_batch(
                         pack_id,
                     )
 
-    batch.imported_count = len(pack_ids)
-    batch.status = "done"
-    batch.finished_at = datetime.now(timezone.utc)
-    db.add(batch)
-
-    db.exec(
-        delete(ImportCandidate).where(
-            ImportCandidate.batch_id == batch_id,
-            ImportCandidate.status == "imported",
-        )
-    )
-
-    db.commit()
-
     return {
         "imported_count": len(pack_ids),
         "pack_ids": pack_ids,
@@ -183,82 +119,57 @@ async def commit_batch(
     }
 
 
-def get_batch(db: Session, batch_id: int) -> ImportBatch | None:
-    """Return a batch with its candidates."""
-    return db.get(ImportBatch, batch_id)
-
-
 def cancel_import_pack(db: Session, pack_id: int) -> dict:
-    """Cancel a just-imported pack — delete it and revert its candidate.
-
-    Returns the batch_id and candidate_id so the frontend can update state.
-    """
+    """Cancel a just-imported pack — delete it."""
     from app.services import pack_service
 
     pack = db.get(Pack, pack_id)
     if pack is None:
         return {"error": "not_found"}
 
-    # Find the matching import candidate by folder path
-    candidate = db.exec(
-        select(ImportCandidate).where(
-            ImportCandidate.folder_path == pack.dir_path,
-            ImportCandidate.status == "imported",
-        )
-    ).first()
-
-    batch_id = candidate.batch_id if candidate else None
-
-    if candidate:
-        candidate.status = "selected"
-        db.add(candidate)
-
-    # Decrement batch imported_count
-    if batch_id:
-        batch = db.get(ImportBatch, batch_id)
-        if batch and batch.imported_count > 0:
-            batch.imported_count -= 1
-            db.add(batch)
-
-    # Let delete_pack handle commit — candidate/batch changes ride along
     result = pack_service.delete_pack(db, pack_id)
-    if result != True:
+    if result is not True:
         return {"error": result}
 
-    return {
-        "pack_id": pack_id,
-        "batch_id": batch_id,
-        "candidate_id": candidate.id if candidate else None,
-    }
+    return {"pack_id": pack_id}
 
 
-def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | None:
+def _import_single_candidate(
+    db: Session, candidate: ImportCandidateInput,
+) -> int | None:
     """Create Pack + Assets + relations for one candidate."""
-    # Parse detected names
     coser_names = (
-        [n.strip() for n in candidate.detected_coser_names.split(",") if n.strip()]
+        [
+            n.strip()
+            for n in candidate.detected_coser_names.split(",")
+            if n.strip()
+        ]
         if candidate.detected_coser_names
         else []
     )
     work_name = candidate.detected_work_name
     character_raw = (
-        [n.strip() for n in candidate.detected_character_names.split(",") if n.strip()]
+        [
+            n.strip()
+            for n in candidate.detected_character_names.split(",")
+            if n.strip()
+        ]
         if candidate.detected_character_names
         else []
     )
     if work_name == ORIGINAL_WORK_NAME:
         character_raw = [ORIGINAL_CHARACTER_NAME]
 
-    # Create-or-get Work
     work = None
     if work_name:
-        work = db.exec(select(Work).where(Work.name == work_name)).first()
+        work = db.exec(
+            select(Work).where(Work.name == work_name),
+        ).first()
         if work is None:
             work = Work(name=work_name)
             db.add(work)
             db.flush()
 
-    # Create Pack
     pack = Pack(
         title=candidate.detected_title or candidate.folder_name,
         dir_path=candidate.folder_path,
@@ -270,7 +181,6 @@ def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | N
     db.add(pack)
     db.flush()
 
-    # Create Assets
     stats = scan_media_dir(candidate.folder_path)
     for idx, f in enumerate(stats["files"]):
         asset = Asset(
@@ -283,7 +193,6 @@ def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | N
         )
         db.add(asset)
 
-    # Set first image as cover
     db.flush()
     first_image = db.exec(
         select(Asset)
@@ -295,22 +204,27 @@ def _import_single_candidate(db: Session, candidate: ImportCandidate) -> int | N
         pack.cover_asset_id = first_image.id
         db.add(pack)
 
-    # Create-or-get Cosers and link
     for i, cname in enumerate(coser_names):
         coser = _get_or_create_coser(db, cname)
-        link = PackCoser(pack_id=pack.id, coser_id=coser.id, is_primary=(i == 0))
+        link = PackCoser(
+            pack_id=pack.id, coser_id=coser.id, is_primary=(i == 0),
+        )
         db.add(link)
         _add_suggestion(db, pack.id, "coser", cname, coser.id)
 
-    # Create-or-get Characters/Outfits and link
     for i, raw_char in enumerate(character_raw):
-        # Parse character segment: "Name Outfit" or just "Name"
         parts = raw_char.split(" ", 1)
         char_name = parts[0]
         outfit_name = parts[1].strip() if len(parts) > 1 else None
 
-        character = _get_or_create_character(db, char_name, work.id if work else None)
-        link = PackCharacter(pack_id=pack.id, character_id=character.id, is_primary=(i == 0))
+        character = _get_or_create_character(
+            db, char_name, work.id if work else None,
+        )
+        link = PackCharacter(
+            pack_id=pack.id,
+            character_id=character.id,
+            is_primary=(i == 0),
+        )
         db.add(link)
         _add_suggestion(db, pack.id, "character", char_name, character.id)
 
@@ -334,8 +248,9 @@ def _get_or_create_coser(db: Session, name: str) -> Coser:
     coser = db.exec(select(Coser).where(Coser.name == name)).first()
     if coser:
         return coser
-    # Check aliases
-    alias = db.exec(select(CoserAlias).where(CoserAlias.alias == name)).first()
+    alias = db.exec(
+        select(CoserAlias).where(CoserAlias.alias == name),
+    ).first()
     if alias:
         return db.get(Coser, alias.coser_id)
     coser = Coser(name=name)
@@ -344,7 +259,9 @@ def _get_or_create_coser(db: Session, name: str) -> Coser:
     return coser
 
 
-def _get_or_create_character(db: Session, name: str, work_id: int | None) -> Character:
+def _get_or_create_character(
+    db: Session, name: str, work_id: int | None,
+) -> Character:
     """Find or create a Character."""
     stmt = select(Character).where(Character.name == name)
     if work_id is not None:
@@ -358,10 +275,14 @@ def _get_or_create_character(db: Session, name: str, work_id: int | None) -> Cha
     return character
 
 
-def _get_or_create_outfit(db: Session, name: str, character_id: int) -> Outfit:
+def _get_or_create_outfit(
+    db: Session, name: str, character_id: int,
+) -> Outfit:
     """Find or create an Outfit."""
     outfit = db.exec(
-        select(Outfit).where(Outfit.name == name, Outfit.character_id == character_id),
+        select(Outfit).where(
+            Outfit.name == name, Outfit.character_id == character_id,
+        ),
     ).first()
     if outfit:
         return outfit
@@ -372,7 +293,11 @@ def _get_or_create_outfit(db: Session, name: str, character_id: int) -> Outfit:
 
 
 def _add_suggestion(
-    db: Session, pack_id: int, field_name: str, value: str, entity_id: int,
+    db: Session,
+    pack_id: int,
+    field_name: str,
+    value: str,
+    entity_id: int,
 ) -> None:
     """Write an accepted metadata suggestion for audit."""
     db.add(MetadataSuggestion(

@@ -4,12 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
 import { ImportWizardClient } from "@/components/import/import-wizard-client";
-import type { ImportBatchOut } from "@/lib/api/types";
+import type { ScanResult } from "@/lib/api/types";
 
 const usePathnameMock = vi.fn();
 const scanImportMock = vi.fn();
-const updateCandidateMock = vi.fn();
-const commitBatchMock = vi.fn();
+const commitImportMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
@@ -29,22 +28,15 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/api/imports", () => ({
   scanImport: (...args: unknown[]) => scanImportMock(...args),
-  updateCandidate: (...args: unknown[]) => updateCandidateMock(...args),
-  commitBatch: (...args: unknown[]) => commitBatchMock(...args),
+  commitImport: (...args: unknown[]) => commitImportMock(...args),
+  cancelImport: vi.fn(),
 }));
 
-const batch: ImportBatchOut = {
-  id: 55,
+const scanResult: ScanResult = {
   root_path: "/imports/test",
-  status: "ready",
   total_candidates: 2,
-  imported_count: 0,
-  created_at: "2026-04-02T00:00:00Z",
-  finished_at: null,
   candidates: [
     {
-      id: 101,
-      batch_id: 55,
       folder_path: "/imports/test/鳗鱼霏儿 - 明日方舟 - 阿米娅 10p",
       folder_name: "鳗鱼霏儿 - 明日方舟 - 阿米娅 10p",
       detected_title: "阿米娅 10p",
@@ -55,12 +47,8 @@ const batch: ImportBatchOut = {
       video_count: 0,
       total_size_bytes: 1024,
       existing_pack_id: null,
-      status: "pending",
-      created_at: "2026-04-02T00:00:00Z",
     },
     {
-      id: 102,
-      batch_id: 55,
       folder_path: "/imports/test/铃木美咲 - 原神 - 刻晴 花嫁 31p 1v",
       folder_name: "铃木美咲 - 原神 - 刻晴 花嫁 31p 1v",
       detected_title: "刻晴 花嫁 31p 1v",
@@ -71,8 +59,6 @@ const batch: ImportBatchOut = {
       video_count: 1,
       total_size_bytes: 2048,
       existing_pack_id: 9,
-      status: "selected",
-      created_at: "2026-04-02T00:00:00Z",
     },
   ],
 };
@@ -92,12 +78,11 @@ describe("AdminSidebar", () => {
 describe("ImportWizardClient", () => {
   beforeEach(() => {
     scanImportMock.mockReset();
-    updateCandidateMock.mockReset();
-    commitBatchMock.mockReset();
+    commitImportMock.mockReset();
   });
 
-  it("scans a root path and renders batch summary with candidates", async () => {
-    scanImportMock.mockResolvedValue(batch);
+  it("scans a root path and renders scan summary with candidates", async () => {
+    scanImportMock.mockResolvedValue(scanResult);
 
     render(<ImportWizardClient />);
 
@@ -107,25 +92,21 @@ describe("ImportWizardClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
     await waitFor(() => {
-      expect(scanImportMock).toHaveBeenCalledWith("/imports/test", expect.any(Function));
+      expect(scanImportMock).toHaveBeenCalledWith(
+        "/imports/test",
+        expect.any(Function),
+      );
     });
 
-    expect(await screen.findByText("Batch summary")).toBeInTheDocument();
+    expect(await screen.findByText("Scan summary")).toBeInTheDocument();
     expect(screen.getByText("Candidates")).toBeInTheDocument();
     fireEvent.click(screen.getByText(/已存在的图包/));
     expect(screen.getByText(/Existing pack #9/i)).toBeInTheDocument();
     expect(screen.getByText("Selected 0 of 1")).toBeInTheDocument();
   });
 
-  it("saves edited candidate fields with string payloads", async () => {
-    scanImportMock.mockResolvedValue(batch);
-    updateCandidateMock.mockResolvedValue({
-      ...batch.candidates[0],
-      detected_title: "阿米娅新标题",
-      detected_coser_names: "鳗鱼霏儿,测试Coser",
-      detected_character_names: "阿米娅 近卫",
-      status: "pending",
-    });
+  it("applies edited candidate fields locally without API call", async () => {
+    scanImportMock.mockResolvedValue(scanResult);
 
     render(<ImportWizardClient />);
 
@@ -147,35 +128,25 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Apply" }));
 
-    await waitFor(() => {
-      expect(updateCandidateMock).toHaveBeenCalledWith(
-        55,
-        101,
-        {
-          detected_title: "阿米娅新标题",
-          detected_coser_names: "鳗鱼霏儿,测试Coser",
-          detected_work_name: "明日方舟",
-          detected_character_names: "阿米娅 近卫",
-          status: "pending",
-        },
-        expect.any(Function),
-      );
-    });
+    // Title should update locally
+    expect(await screen.findByText("阿米娅新标题")).toBeInTheDocument();
+    // No API call should have been made
+    expect(commitImportMock).not.toHaveBeenCalled();
   });
 
   it("shows original work character placeholder naturally", async () => {
     scanImportMock.mockResolvedValue({
-      ...batch,
+      ...scanResult,
+      total_candidates: 1,
       candidates: [
         {
-          ...batch.candidates[0],
+          ...scanResult.candidates[0],
           folder_name: "兔总裁 - 原创 - 白兔女仆 12p",
           detected_title: "白兔女仆",
           detected_work_name: "原创",
           detected_character_names: "OriginalCharacter",
         },
       ],
-      total_candidates: 1,
     });
 
     render(<ImportWizardClient />);
@@ -191,20 +162,7 @@ describe("ImportWizardClient", () => {
   });
 
   it("updates selection count from checkbox and clear action", async () => {
-    scanImportMock.mockResolvedValue(batch);
-    updateCandidateMock
-      .mockResolvedValueOnce({
-        ...batch.candidates[0],
-        status: "selected",
-      })
-      .mockResolvedValueOnce({
-        ...batch.candidates[0],
-        status: "pending",
-      })
-      .mockResolvedValueOnce({
-        ...batch.candidates[1],
-        status: "pending",
-      });
+    scanImportMock.mockResolvedValue(scanResult);
 
     render(<ImportWizardClient />);
 
@@ -218,43 +176,29 @@ describe("ImportWizardClient", () => {
     );
     fireEvent.click(firstCheckbox);
 
-    await waitFor(() => {
-      expect(updateCandidateMock).toHaveBeenCalledWith(
-        55,
-        101,
-        { status: "selected" },
-        expect.any(Function),
-      );
-    });
-
-    expect(await screen.findByText("Selected 1 of 1")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Selected 1 of 1"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Clear Selection" }));
 
-    await waitFor(() => {
-      expect(updateCandidateMock).toHaveBeenCalledWith(
-        55,
-        101,
-        { status: "selected" },
-        expect.any(Function),
-      );
-    });
-
-    expect(await screen.findByText("Selected 0 of 1")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Selected 0 of 1"),
+    ).toBeInTheDocument();
   });
 
   it("commits selected candidates and shows import result", async () => {
-    const commitBatch: ImportBatchOut = {
-      ...batch,
+    scanImportMock.mockResolvedValue({
+      ...scanResult,
       candidates: [
-        { ...batch.candidates[0], status: "selected" },
-        batch.candidates[1],
+        { ...scanResult.candidates[0] },
       ],
-    };
-    scanImportMock.mockResolvedValue(commitBatch);
-    commitBatchMock.mockResolvedValue({
+      total_candidates: 1,
+    });
+    commitImportMock.mockResolvedValue({
       imported_count: 1,
       pack_ids: [3001],
+      duplicate_checks: [],
     });
 
     render(<ImportWizardClient />);
@@ -264,20 +208,39 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
+    // The single new candidate is auto-selectable; select it
+    const checkbox = await screen.findByLabelText(
+      "Select 鳗鱼霏儿 - 明日方舟 - 阿米娅 10p",
+    );
+    fireEvent.click(checkbox);
+
     await screen.findByText("Selected 1 of 1");
-    fireEvent.click(screen.getByRole("button", { name: "Import Selected (1)" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Import Selected (1)" }),
+    );
 
     await waitFor(() => {
-      expect(commitBatchMock).toHaveBeenCalledWith(55, expect.any(Function), false);
+      expect(commitImportMock).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            folder_name: "鳗鱼霏儿 - 明日方舟 - 阿米娅 10p",
+          }),
+        ]),
+        false,
+        expect.any(Function),
+      );
     });
 
-    expect(await screen.findByText("Imported 1 packs.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Imported 1 packs."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Pack IDs: 3001")).toBeInTheDocument();
-    expect(screen.getByText("done")).toBeInTheDocument();
   });
 
   it("shows API errors from scanning", async () => {
-    scanImportMock.mockRejectedValue(new ApiError(400, "Root path not found"));
+    scanImportMock.mockRejectedValue(
+      new ApiError(400, "Root path not found"),
+    );
 
     render(<ImportWizardClient />);
 
@@ -286,18 +249,13 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
-    expect(await screen.findByText("Root path not found")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Root path not found"),
+    ).toBeInTheDocument();
   });
 
-  it("moves already-imported candidates to existing section after scan", async () => {
-    const batchWithImported: ImportBatchOut = {
-      ...batch,
-      candidates: [
-        batch.candidates[0],
-        { ...batch.candidates[1], status: "imported" },
-      ],
-    };
-    scanImportMock.mockResolvedValue(batchWithImported);
+  it("moves existing-pack candidates to existing section after scan", async () => {
+    scanImportMock.mockResolvedValue(scanResult);
 
     render(<ImportWizardClient />);
 
@@ -306,76 +264,30 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
-    await screen.findByText("Batch summary");
+    await screen.findByText("Scan summary");
 
-    expect(screen.getByLabelText(`Select ${batch.candidates[0].folder_name}`)).toBeInTheDocument();
     expect(
-      screen.queryByLabelText(`Select ${batch.candidates[1].folder_name}`),
+      screen.getByLabelText(
+        `Select ${scanResult.candidates[0].folder_name}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(
+        `Select ${scanResult.candidates[1].folder_name}`,
+      ),
     ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText(/已存在的图包/));
-    expect(screen.getByText(batch.candidates[1].folder_name)).toBeInTheDocument();
-  });
-
-  it("shows imported badge for newly-imported candidates in existing section", async () => {
-    const commitBatch: ImportBatchOut = {
-      ...batch,
-      total_candidates: 3,
-      candidates: [
-        { ...batch.candidates[0], status: "selected" },
-        batch.candidates[1],
-        {
-          id: 103,
-          batch_id: 55,
-          folder_path: "/imports/test/pending-pack",
-          folder_name: "pending-pack",
-          detected_title: null,
-          detected_coser_names: null,
-          detected_work_name: null,
-          detected_character_names: null,
-          photo_count: 5,
-          video_count: 0,
-          total_size_bytes: 512,
-          existing_pack_id: null,
-          status: "pending" as const,
-          created_at: "2026-04-02T00:00:00Z",
-        },
-      ],
-    };
-    scanImportMock.mockResolvedValue(commitBatch);
-    commitBatchMock.mockResolvedValue({
-      imported_count: 1,
-      pack_ids: [3001],
-    });
-
-    render(<ImportWizardClient />);
-
-    fireEvent.change(screen.getByLabelText("Root path"), {
-      target: { value: "/imports/test" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
-
-    await screen.findByText("Selected 1 of 2");
-    fireEvent.click(screen.getByRole("button", { name: "Import Selected (1)" }));
-
-    await screen.findByText("Imported 1 packs.");
-
     expect(
-      screen.queryByLabelText(`Select ${batch.candidates[0].folder_name}`),
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByText(/已存在的图包/));
-    expect(screen.getByText(batch.candidates[0].folder_name)).toBeInTheDocument();
-    expect(screen.getAllByText("已导入").length).toBeGreaterThanOrEqual(1);
+      screen.getByText(scanResult.candidates[1].folder_name),
+    ).toBeInTheDocument();
   });
 
   it("paginates candidates when exceeding page size", async () => {
-    const largeBatch: ImportBatchOut = {
-      ...batch,
+    const largeScan: ScanResult = {
+      root_path: "/imports/test",
       total_candidates: 25,
       candidates: Array.from({ length: 25 }, (_, i) => ({
-        id: 200 + i,
-        batch_id: 55,
         folder_path: `/imports/test/pack-${i}`,
         folder_name: `pack-${i}`,
         detected_title: `Title ${i}`,
@@ -386,11 +298,9 @@ describe("ImportWizardClient", () => {
         video_count: 0,
         total_size_bytes: 512,
         existing_pack_id: null,
-        status: "pending" as const,
-        created_at: "2026-04-02T00:00:00Z",
       })),
     };
-    scanImportMock.mockResolvedValue(largeBatch);
+    scanImportMock.mockResolvedValue(largeScan);
 
     render(<ImportWizardClient />);
 
@@ -399,28 +309,34 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
-    await screen.findByText("Batch summary");
+    await screen.findByText("Scan summary");
 
-    expect(screen.getAllByText(/Showing 1-20 of 25/).length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText(/Showing 1-20 of 25/).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Select pack-0")).toBeInTheDocument();
     expect(screen.getByLabelText("Select pack-19")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Select pack-20")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Select pack-20"),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getAllByLabelText("Page 2")[0]);
 
-    expect(screen.getAllByText(/Showing 21-25 of 25/).length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getAllByText(/Showing 21-25 of 25/).length,
+    ).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Select pack-20")).toBeInTheDocument();
     expect(screen.getByLabelText("Select pack-24")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Select pack-0")).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Select pack-0"),
+    ).not.toBeInTheDocument();
   });
 
-  it("select all operates across all pages", async () => {
-    const largeBatch: ImportBatchOut = {
-      ...batch,
+  it("select all operates across all pages synchronously", async () => {
+    const largeScan: ScanResult = {
+      root_path: "/imports/test",
       total_candidates: 25,
       candidates: Array.from({ length: 25 }, (_, i) => ({
-        id: 200 + i,
-        batch_id: 55,
         folder_path: `/imports/test/pack-${i}`,
         folder_name: `pack-${i}`,
         detected_title: `Title ${i}`,
@@ -431,18 +347,9 @@ describe("ImportWizardClient", () => {
         video_count: 0,
         total_size_bytes: 512,
         existing_pack_id: null,
-        status: "pending" as const,
-        created_at: "2026-04-02T00:00:00Z",
       })),
     };
-    scanImportMock.mockResolvedValue(largeBatch);
-
-    for (let i = 0; i < 25; i++) {
-      updateCandidateMock.mockResolvedValueOnce({
-        ...largeBatch.candidates[i],
-        status: "selected",
-      });
-    }
+    scanImportMock.mockResolvedValue(largeScan);
 
     render(<ImportWizardClient />);
 
@@ -451,14 +358,14 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
-    await screen.findByText("Batch summary");
+    await screen.findByText("Scan summary");
 
     fireEvent.click(screen.getByRole("button", { name: "Select All (25)" }));
 
-    await waitFor(() => {
-      expect(updateCandidateMock).toHaveBeenCalledTimes(25);
-    });
-
-    expect(await screen.findByText("Selected 25 of 25")).toBeInTheDocument();
+    // Selection is synchronous — no API calls needed
+    expect(
+      await screen.findByText("Selected 25 of 25"),
+    ).toBeInTheDocument();
+    expect(commitImportMock).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,6 @@
 """Import schemas for scan/commit workflow."""
 
-from datetime import datetime
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class ImportScanRequest(BaseModel):
@@ -11,13 +9,9 @@ class ImportScanRequest(BaseModel):
     root_path: str
 
 
-class ImportCandidateOut(BaseModel):
+class ScanCandidateOut(BaseModel):
     """A candidate directory found during scan."""
 
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    batch_id: int
     folder_path: str
     folder_name: str
     detected_title: str | None
@@ -28,33 +22,35 @@ class ImportCandidateOut(BaseModel):
     video_count: int
     total_size_bytes: int
     existing_pack_id: int | None
-    status: str
-    created_at: datetime
 
 
-class ImportCandidateUpdate(BaseModel):
-    """User edits to a candidate before committing."""
+class ScanResultOut(BaseModel):
+    """Response for a directory scan."""
 
-    detected_title: str | None = None
-    detected_coser_names: str | None = None
-    detected_work_name: str | None = None
-    detected_character_names: str | None = None
-    status: str | None = None
-
-
-class ImportBatchOut(BaseModel):
-    """Response for an import batch."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
     root_path: str
-    status: str
     total_candidates: int
-    imported_count: int
-    created_at: datetime
-    finished_at: datetime | None
-    candidates: list[ImportCandidateOut] = []
+    candidates: list[ScanCandidateOut]
+
+
+class ImportCandidateInput(BaseModel):
+    """A candidate submitted at commit time."""
+
+    folder_path: str
+    folder_name: str
+    detected_title: str | None
+    detected_coser_names: str | None
+    detected_work_name: str | None
+    detected_character_names: str | None
+    photo_count: int
+    video_count: int
+    total_size_bytes: int
+
+
+class ImportCommitRequest(BaseModel):
+    """Request body for committing selected candidates."""
+
+    candidates: list[ImportCandidateInput]
+    skip_duplicate_check: bool = False
 
 
 class ImportCommitResult(BaseModel):
@@ -69,5 +65,3 @@ class CancelImportResult(BaseModel):
     """Result of cancelling a just-imported pack."""
 
     pack_id: int
-    batch_id: int | None
-    candidate_id: int | None

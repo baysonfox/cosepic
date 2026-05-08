@@ -9,7 +9,7 @@ test("embedding status shows after import", async ({ page }) => {
   await page.getByRole("button", { name: "Scan" }).click();
 
   // 等待扫描完成
-  await expect(page.getByText("Batch summary")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("Scan summary")).toBeVisible({ timeout: 15000 });
 
   // 验证候选项存在
   const candidates = page.locator('[data-slot="card"]');
