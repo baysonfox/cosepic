@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlmodel import Session, col, func, select
 
+from app.config import settings
 from app.models.character import Character
 from app.models.coser import Coser
 from app.models.outfit import Outfit
@@ -364,6 +365,13 @@ def delete_pack(db: Session, pack_id: int) -> bool | str:
                 db.delete(coser)
 
     db.commit()
+
+    # Clean up orphaned thumbnail files
+    for aid in asset_ids:
+        thumb = settings.thumbnail_dir / f"{aid}.webp"
+        if thumb.is_file():
+            thumb.unlink(missing_ok=True)
+
     return True
 
 
