@@ -498,8 +498,6 @@ def get_pack_embedding_status(db: Session, pack_id: int) -> dict | None:
 
 def get_embedding_stats(db: Session) -> dict:
     """查询 embedding 覆盖统计."""
-    total_packs = db.exec(select(Pack)).all()
-
     total_assets = db.exec(
         select(func.count()).where(Asset.asset_type == "image")
     ).one()
@@ -510,44 +508,46 @@ def get_embedding_stats(db: Session) -> dict:
         )
     ).one()
 
-    stats = {
-        "total_packs": len(total_packs),
-        "total_assets": total_assets,
-        "embeddings_count": total_embeddings,
-        "completed_packs": 0,
-        "incomplete_packs": [],
-        "no_embedding_packs": [],
-    }
+    rows = db.exec(
+        text("""
+            SELECT
+                p.id as pack_id,
+                p.title as pack_title,
+                COUNT(a.id) as total_images,
+                COUNT(a.embedding) as processed_images
+            FROM packs p
+            JOIN assets a ON a.pack_id = p.id AND a.asset_type = 'image'
+            GROUP BY p.id, p.title
+        """)
+    ).all()
 
-    for pack in total_packs:
-        assets = db.exec(
-            select(Asset).where(
-                Asset.pack_id == pack.id,
-                Asset.asset_type == "image",
-            )
-        ).all()
-
-        if not assets:
-            continue
-
-        total = len(assets)
-        with_embedding = sum(1 for a in assets if a.embedding is not None)
-
-        if with_embedding == total:
-            stats["completed_packs"] += 1
-        elif with_embedding == 0:
-            stats["no_embedding_packs"].append({
-                "pack_id": pack.id,
-                "pack_title": pack.title,
+    completed = 0
+    incomplete_packs = []
+    no_embedding_packs = []
+    for row in rows:
+        pack_id, pack_title, total, processed = row
+        if processed == total:
+            completed += 1
+        elif processed == 0:
+            no_embedding_packs.append({
+                "pack_id": pack_id,
+                "pack_title": pack_title,
                 "total_images": total,
             })
         else:
-            stats["incomplete_packs"].append({
-                "pack_id": pack.id,
-                "pack_title": pack.title,
+            incomplete_packs.append({
+                "pack_id": pack_id,
+                "pack_title": pack_title,
                 "total_images": total,
-                "processed_images": with_embedding,
-                "progress": with_embedding / total,
+                "processed_images": processed,
+                "progress": processed / total,
             })
 
-    return stats
+    return {
+        "total_packs": len(rows),
+        "total_assets": total_assets,
+        "embeddings_count": total_embeddings,
+        "completed_packs": completed,
+        "incomplete_packs": incomplete_packs,
+        "no_embedding_packs": no_embedding_packs,
+    }
