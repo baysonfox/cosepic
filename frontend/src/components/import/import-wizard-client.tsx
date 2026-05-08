@@ -82,7 +82,6 @@ export function ImportWizardClient() {
   const [committing, setCommitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ImportCommitResult | null>(null);
-  const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
   const [page, setPage] = useState(1);
   const [comparisonDialogOpen, setComparisonDialogOpen] = useState(false);
   const [selectedDuplicate, setSelectedDuplicate] = useState<DuplicateItem | null>(null);
@@ -94,8 +93,12 @@ export function ImportWizardClient() {
 
   const { newCandidates, existingCandidates } = useMemo(() => {
     if (!batch) return { newCandidates: [], existingCandidates: [] };
-    const newOnes = batch.candidates.filter(c => !c.existing_pack_id);
-    const existing = batch.candidates.filter(c => c.existing_pack_id);
+    const newOnes = batch.candidates.filter(
+      c => !c.existing_pack_id && c.status !== "imported",
+    );
+    const existing = batch.candidates.filter(
+      c => c.existing_pack_id || c.status === "imported",
+    );
     return { newCandidates: newOnes, existingCandidates: existing };
   }, [batch]);
 
@@ -114,19 +117,6 @@ export function ImportWizardClient() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
-
-  function toggleCollapsed(candidateId: number) {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(candidateId)) {
-        next.delete(candidateId);
-      } else {
-        next.add(candidateId);
-        setExpandedId((prevExpanded) => (prevExpanded === candidateId ? null : prevExpanded));
-      }
-      return next;
-    });
-  }
 
   function openComparisonDialog(dup: DuplicateItem, packTitle: string) {
     setSelectedDuplicate(dup);
@@ -199,13 +189,6 @@ export function ImportWizardClient() {
       setBatch(nextBatch);
       setExpandedId(nextBatch.candidates[0]?.id ?? null);
       setPage(1);
-      setCollapsedIds(
-        new Set(
-          nextBatch.candidates
-            .filter((c) => c.status === "imported")
-            .map((c) => c.id),
-        ),
-      );
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError ? error.detail : "Failed to scan import directory.",
@@ -263,9 +246,6 @@ export function ImportWizardClient() {
     try {
       const nextResult = await commitBatch(batch.id, clientFetch, skipDuplicateCheck);
       setResult(nextResult);
-      const importedIds = batch.candidates
-        .filter((c) => c.status === "selected")
-        .map((c) => c.id);
       setBatch((prev) => {
         if (!prev) {
           return prev;
@@ -280,13 +260,6 @@ export function ImportWizardClient() {
               : candidate,
           ),
         };
-      });
-      setCollapsedIds((prev) => {
-        const next = new Set(prev);
-        for (const id of importedIds) {
-          next.add(id);
-        }
-        return next;
       });
     } catch (error) {
       setErrorMessage(
@@ -497,37 +470,9 @@ export function ImportWizardClient() {
           />
 
           {visibleCandidates.map((candidate) => {
-            const collapsed = collapsedIds.has(candidate.id);
             const expanded = expandedId === candidate.id;
             const selected = candidate.status === "selected";
             const saving = savingCandidateId === candidate.id;
-
-            if (collapsed) {
-              return (
-                <Card key={candidate.id} className="opacity-60">
-                  <CardHeader className="py-3">
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 text-left"
-                      onClick={() => toggleCollapsed(candidate.id)}
-                      aria-label={`Expand ${candidate.folder_name}`}
-                    >
-                      <ChevronRight className="h-4 w-4 shrink-0" />
-                      <span className="min-w-0 truncate font-semibold">{candidate.folder_name}</span>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <CandidateStatusBadge status={candidate.status} />
-                        {candidate.existing_pack_id && (
-                          <Badge variant="destructive" className="gap-1">
-                            <TriangleAlert className="h-3 w-3" />
-                            Existing pack #{candidate.existing_pack_id}
-                          </Badge>
-                        )}
-                      </div>
-                    </button>
-                  </CardHeader>
-                </Card>
-              );
-            }
 
             return (
               <Card key={candidate.id}>
@@ -616,10 +561,14 @@ export function ImportWizardClient() {
                     <div key={candidate.id} className="rounded-lg border p-3 opacity-60">
                       <div className="flex items-center justify-between">
                         <span className="font-medium">{candidate.folder_name}</span>
-                        <Badge variant="destructive" className="gap-1">
-                          <TriangleAlert className="h-3 w-3" />
-                          Existing pack #{candidate.existing_pack_id}
-                        </Badge>
+                        {candidate.existing_pack_id ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <TriangleAlert className="h-3 w-3" />
+                            Existing pack #{candidate.existing_pack_id}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary">已导入</Badge>
+                        )}
                       </div>
                     </div>
                   ))}

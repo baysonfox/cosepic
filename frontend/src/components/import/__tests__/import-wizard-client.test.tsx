@@ -112,8 +112,9 @@ describe("ImportWizardClient", () => {
 
     expect(await screen.findByText("Batch summary")).toBeInTheDocument();
     expect(screen.getByText("Candidates")).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/已存在的图包/));
     expect(screen.getByText(/Existing pack #9/i)).toBeInTheDocument();
-    expect(screen.getByText("Selected 1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Selected 0 of 1")).toBeInTheDocument();
   });
 
   it("saves edited candidate fields with string payloads", async () => {
@@ -226,24 +227,31 @@ describe("ImportWizardClient", () => {
       );
     });
 
-    expect(await screen.findByText("Selected 2 of 2")).toBeInTheDocument();
+    expect(await screen.findByText("Selected 1 of 1")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Clear Selection" }));
 
     await waitFor(() => {
-      expect(updateCandidateMock).toHaveBeenLastCalledWith(
+      expect(updateCandidateMock).toHaveBeenCalledWith(
         55,
-        102,
-        { status: "pending" },
+        101,
+        { status: "selected" },
         expect.any(Function),
       );
     });
 
-    expect(await screen.findByText("Selected 0 of 2")).toBeInTheDocument();
+    expect(await screen.findByText("Selected 0 of 1")).toBeInTheDocument();
   });
 
   it("commits selected candidates and shows import result", async () => {
-    scanImportMock.mockResolvedValue(batch);
+    const commitBatch: ImportBatchOut = {
+      ...batch,
+      candidates: [
+        { ...batch.candidates[0], status: "selected" },
+        batch.candidates[1],
+      ],
+    };
+    scanImportMock.mockResolvedValue(commitBatch);
     commitBatchMock.mockResolvedValue({
       imported_count: 1,
       pack_ids: [3001],
@@ -256,11 +264,11 @@ describe("ImportWizardClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Scan" }));
 
-    await screen.findByText("Selected 1 of 2");
+    await screen.findByText("Selected 1 of 1");
     fireEvent.click(screen.getByRole("button", { name: "Import Selected (1)" }));
 
     await waitFor(() => {
-      expect(commitBatchMock).toHaveBeenCalledWith(55, expect.any(Function));
+      expect(commitBatchMock).toHaveBeenCalledWith(55, expect.any(Function), false);
     });
 
     expect(await screen.findByText("Imported 1 packs.")).toBeInTheDocument();
@@ -281,7 +289,7 @@ describe("ImportWizardClient", () => {
     expect(await screen.findByText("Root path not found")).toBeInTheDocument();
   });
 
-  it("collapses already-imported candidates by default after scan", async () => {
+  it("moves already-imported candidates to existing section after scan", async () => {
     const batchWithImported: ImportBatchOut = {
       ...batch,
       candidates: [
@@ -300,49 +308,41 @@ describe("ImportWizardClient", () => {
 
     await screen.findByText("Batch summary");
 
-    expect(screen.getAllByText(batch.candidates[0].folder_name).length).toBe(2);
     expect(screen.getByLabelText(`Select ${batch.candidates[0].folder_name}`)).toBeInTheDocument();
-
-    expect(screen.getAllByText(batch.candidates[1].folder_name).length).toBe(1);
     expect(
       screen.queryByLabelText(`Select ${batch.candidates[1].folder_name}`),
     ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/已存在的图包/));
+    expect(screen.getByText(batch.candidates[1].folder_name)).toBeInTheDocument();
   });
 
-  it("expands a collapsed candidate on click", async () => {
-    const batchWithImported: ImportBatchOut = {
+  it("shows imported badge for newly-imported candidates in existing section", async () => {
+    const commitBatch: ImportBatchOut = {
       ...batch,
+      total_candidates: 3,
       candidates: [
-        { ...batch.candidates[0], status: "imported" },
+        { ...batch.candidates[0], status: "selected" },
+        batch.candidates[1],
+        {
+          id: 103,
+          batch_id: 55,
+          folder_path: "/imports/test/pending-pack",
+          folder_name: "pending-pack",
+          detected_title: null,
+          detected_coser_names: null,
+          detected_work_name: null,
+          detected_character_names: null,
+          photo_count: 5,
+          video_count: 0,
+          total_size_bytes: 512,
+          existing_pack_id: null,
+          status: "pending" as const,
+          created_at: "2026-04-02T00:00:00Z",
+        },
       ],
-      total_candidates: 1,
     };
-    scanImportMock.mockResolvedValue(batchWithImported);
-
-    render(<ImportWizardClient />);
-
-    fireEvent.change(screen.getByLabelText("Root path"), {
-      target: { value: "/imports/test" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Scan" }));
-
-    await screen.findByText("Batch summary");
-
-    expect(
-      screen.queryByLabelText(`Select ${batch.candidates[0].folder_name}`),
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByLabelText(`Expand ${batch.candidates[0].folder_name}`),
-    );
-
-    expect(
-      screen.getByLabelText(`Select ${batch.candidates[0].folder_name}`),
-    ).toBeInTheDocument();
-  });
-
-  it("collapses newly-imported candidates after commit", async () => {
-    scanImportMock.mockResolvedValue(batch);
+    scanImportMock.mockResolvedValue(commitBatch);
     commitBatchMock.mockResolvedValue({
       imported_count: 1,
       pack_ids: [3001],
@@ -361,11 +361,12 @@ describe("ImportWizardClient", () => {
     await screen.findByText("Imported 1 packs.");
 
     expect(
-      screen.queryByLabelText(`Select ${batch.candidates[1].folder_name}`),
+      screen.queryByLabelText(`Select ${batch.candidates[0].folder_name}`),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByLabelText(`Expand ${batch.candidates[1].folder_name}`),
-    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText(/已存在的图包/));
+    expect(screen.getByText(batch.candidates[0].folder_name)).toBeInTheDocument();
+    expect(screen.getAllByText("已导入").length).toBeGreaterThanOrEqual(1);
   });
 
   it("paginates candidates when exceeding page size", async () => {
