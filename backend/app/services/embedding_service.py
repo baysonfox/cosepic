@@ -9,7 +9,7 @@ from pathlib import Path
 import httpx
 import numpy as np
 from PIL import Image
-from sqlmodel import Session, func, select, text
+from sqlmodel import Session, col, func, select, text
 
 from app.config import settings
 from app.models.asset import Asset
@@ -312,60 +312,85 @@ async def check_pack_duplicates(db: Session, pack_id: int) -> list[dict]:
     if not sample_assets:
         return []
 
-    duplicates = []
     threshold = settings.duplicate_similarity_threshold
 
-    for sample_asset in sample_assets:
-        if sample_asset.embedding is None:
-            continue
+    # 格式化所有样本 embedding 为 pgvector halfvec 字符串
+    def _to_halfvec_str(emb: list[float] | None) -> str | None:
+        if emb is None:
+            return None
+        return "[" + ",".join(str(float(v)) for v in emb) + "]"
 
-        query = text("""
+    sample_data = [
+        (a.id, _to_halfvec_str(a.embedding))
+        for a in sample_assets
+        if a.embedding is not None
+    ]
+    if not sample_data:
+        return []
+
+    # 构建 VALUES CTE，一次性查询所有样本的最近邻
+    values_rows = ", ".join(
+        f"({sid}, '{emb}'::halfvec)" for sid, emb in sample_data
+    )
+    query = text(f"""
+        WITH samples(sample_id, sample_emb) AS (
+            VALUES {values_rows}
+        ),
+        ranked AS (
             SELECT
+                s.sample_id,
                 a.id as asset_id,
                 a.pack_id,
-                p.title as pack_title,
-                (1 - (embedding <-> CAST(:query_embedding AS halfvec)) / 2) as similarity
-            FROM assets a
-            JOIN packs p ON a.pack_id = p.id
-            WHERE
-                a.embedding IS NOT NULL
-                AND a.pack_id != :pack_id
-                AND a.asset_type = 'image'
-            ORDER BY embedding <-> CAST(:query_embedding AS halfvec)
-            LIMIT 1
-        """)
+                (1 - (a.embedding <-> s.sample_emb) / 2) as similarity,
+                ROW_NUMBER() OVER (
+                    PARTITION BY s.sample_id
+                    ORDER BY a.embedding <-> s.sample_emb
+                ) as rn
+            FROM samples s
+            CROSS JOIN LATERAL (
+                SELECT id, pack_id, embedding
+                FROM assets
+                WHERE embedding IS NOT NULL
+                    AND pack_id != :pack_id
+                    AND asset_type = 'image'
+                ORDER BY embedding <-> s.sample_emb
+                LIMIT 5
+            ) a
+        )
+        SELECT sample_id, asset_id, pack_id, similarity
+        FROM ranked
+        WHERE rn = 1 AND similarity >= :threshold
+    """)
 
-        embedding_str = str(sample_asset.embedding)
-        if embedding_str.startswith("HalfVector("):
-            embedding_str = embedding_str[11:-1]
+    rows = db.execute(
+        query,
+        {"pack_id": pack_id, "threshold": threshold},
+    ).all()
 
-        result = db.execute(
-            query,
-            {
-                "query_embedding": embedding_str,
-                "pack_id": pack_id,
-            },
-        ).first()
+    if not rows:
+        return []
 
-        if result and result.similarity >= threshold:
-            existing = next(
-                (d for d in duplicates if d["duplicate_pack_id"] == result.pack_id),
-                None,
-            )
+    # 批量查询 pack titles
+    duplicate_pack_ids = list({row.pack_id for row in rows})
+    packs = db.exec(
+        select(Pack).where(col(Pack.id).in_(duplicate_pack_ids))
+    ).all()
+    pack_titles = {p.id: p.title for p in packs}
 
-            if existing:
-                if result.similarity > existing["max_similarity"]:
-                    existing["max_similarity"] = result.similarity
-                    existing["matched_asset_id"] = sample_asset.id
-                    existing["duplicate_asset_id"] = result.asset_id
-            else:
-                duplicates.append({
-                    "duplicate_pack_id": result.pack_id,
-                    "duplicate_pack_title": result.pack_title,
-                    "max_similarity": result.similarity,
-                    "matched_asset_id": sample_asset.id,
-                    "duplicate_asset_id": result.asset_id,
-                })
+    # 聚合：按 duplicate_pack_id 取 max_similarity
+    best_per_pack: dict[int, dict] = {}
+    for row in rows:
+        pid = row.pack_id
+        if pid not in best_per_pack or row.similarity > best_per_pack[pid]["max_similarity"]:
+            best_per_pack[pid] = {
+                "duplicate_pack_id": pid,
+                "duplicate_pack_title": pack_titles.get(pid, ""),
+                "max_similarity": row.similarity,
+                "matched_asset_id": row.sample_id,
+                "duplicate_asset_id": row.asset_id,
+            }
+
+    duplicates = list(best_per_pack.values())
 
     for dup in duplicates:
         check_record = PackDuplicateCheck(

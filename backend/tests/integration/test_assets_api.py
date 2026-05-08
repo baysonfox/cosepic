@@ -65,7 +65,7 @@ class TestFileServing:
         assert r.status_code == 404
 
     def test_get_thumbnail_not_found(self, client):
-        r = client.get("/api/v1/assets/9999/thumbnail")
+        r = client.get("/api/v1/assets/999999999/thumbnail")
         assert r.status_code == 404
 
 
@@ -109,7 +109,7 @@ class TestThumbnailGeneration:
         ).first()
         r = client.get(f"/api/v1/assets/{asset.id}/thumbnail")
         assert r.status_code == 200
-        assert r.headers["content-type"] == "image/avif"
+        assert r.headers["content-type"] == "image/webp"
 
 
 class TestCoverSetting:
