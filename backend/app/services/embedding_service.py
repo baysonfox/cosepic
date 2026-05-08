@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import io
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -38,14 +39,14 @@ def _encode_image(image_path: str | Path) -> str | None:
                 else:
                     new_height = max_size
                     new_width = int(img.width * max_size / img.height)
-                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                img = img.resize((new_width, new_height), Image.Resampling.BOX)
 
             buffer = io.BytesIO()
-            img.save(buffer, format="PNG")
+            img.save(buffer, format="JPEG", quality=85)
             img_bytes = buffer.getvalue()
 
         b64_str = base64.b64encode(img_bytes).decode("utf-8")
-        return f"data:image/png;base64,{b64_str}"
+        return f"data:image/jpeg;base64,{b64_str}"
     except Exception as e:
         print(f"Error encoding image {image_path}: {e}")
         return None
@@ -143,8 +144,14 @@ async def generate_image_embeddings(
     if not image_paths:
         return []
 
-    # 编码图片
-    data_uris = [_encode_image(p) for p in image_paths]
+    # 并行编码图片（CPU 密集，用线程池利用多核）
+    loop = asyncio.get_running_loop()
+    with ThreadPoolExecutor() as pool:
+        data_uris = list(
+            await asyncio.gather(
+                *[loop.run_in_executor(pool, _encode_image, p) for p in image_paths],
+            ),
+        )
     valid_indices = [i for i, uri in enumerate(data_uris) if uri is not None]
     if not valid_indices:
         return [None] * len(image_paths)
