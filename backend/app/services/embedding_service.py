@@ -132,8 +132,9 @@ async def generate_image_embeddings(
 ) -> list[list[float] | None]:
     """为多张图片批量生成 embedding 向量.
 
-    vLLM 多模态接口每次请求只返回 1 个 embedding，因此多图时拆成逐张
-    并发请求；失败的图片用 SiliconFlow batch 补救。
+    采用流水线架构：编码和 API 请求重叠执行，编码产出一张就立即送入
+    vLLM 推理队列，不需要等全部编码完成。失败的图片用 SiliconFlow
+    batch 补救。
 
     Args:
         image_paths: 图片文件路径列表
@@ -144,44 +145,61 @@ async def generate_image_embeddings(
     if not image_paths:
         return []
 
-    # 并行编码图片（CPU 密集，用线程池利用多核）
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor() as pool:
-        data_uris = list(
-            await asyncio.gather(
-                *[loop.run_in_executor(pool, _encode_image, p) for p in image_paths],
-            ),
-        )
-    valid_indices = [i for i, uri in enumerate(data_uris) if uri is not None]
-    if not valid_indices:
-        return [None] * len(image_paths)
+    n = len(image_paths)
+    results: list[list[float] | None] = [None] * n
+    data_uris: list[str | None] = [None] * n
+    failed_uris: list[str] = []
+    failed_indices: list[int] = []
+    concurrency = settings.embedding_vllm_concurrency
 
-    valid_uris = [data_uris[i] for i in valid_indices]
-    results: list[list[float] | None] = [None] * len(image_paths)
+    # (index, uri | None) — None 是哨兵，表示生产者结束
+    queue: asyncio.Queue[tuple[int, str | None] | None] = asyncio.Queue(
+        maxsize=concurrency * 2,
+    )
+
+    async def _encode_producer(pool: ThreadPoolExecutor) -> None:
+        """在线程池中编码图片，完成一张就推入队列."""
+        loop = asyncio.get_running_loop()
+        for idx, path in enumerate(image_paths):
+            uri = await loop.run_in_executor(pool, _encode_image, path)
+            await queue.put((idx, uri))
+        # 通知所有消费者退出
+        for _ in range(concurrency):
+            await queue.put(None)
+
+    async def _vllm_consumer(
+        client: httpx.AsyncClient,
+        sem: asyncio.Semaphore,
+    ) -> None:
+        """从队列取已编码的图片，发给 vLLM."""
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            idx, uri = item
+            if uri is None:
+                continue
+            data_uris[idx] = uri
+            emb = await _vllm_single_image(client, uri, sem)
+            if emb is not None:
+                results[idx] = emb
+            else:
+                failed_uris.append(uri)
+                failed_indices.append(idx)
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            sem = asyncio.Semaphore(settings.embedding_vllm_concurrency)
-
-            # 并发逐张请求 vLLM
-            vllm_results = await asyncio.gather(
-                *[_vllm_single_image(client, uri, sem) for uri in valid_uris],
-            )
-
-            # 分拣成功/失败，失败的收集起来走 SiliconFlow
-            failed_uris: list[str] = []
-            failed_indices: list[int] = []
-            for idx, emb in zip(valid_indices, vllm_results):
-                if emb is not None:
-                    results[idx] = emb
-                else:
-                    failed_uris.append(data_uris[idx])
-                    failed_indices.append(idx)
+            sem = asyncio.Semaphore(concurrency)
+            with ThreadPoolExecutor() as pool:
+                await asyncio.gather(
+                    _encode_producer(pool),
+                    *[_vllm_consumer(client, sem) for _ in range(concurrency)],
+                )
 
             # SiliconFlow batch 补救
             if failed_uris:
                 print(
-                    f"vLLM {len(failed_uris)}/{len(valid_uris)} failed, "
+                    f"vLLM {len(failed_uris)}/{n} failed, "
                     f"falling back to SiliconFlow"
                 )
                 sf_embeddings = await _siliconflow_batch(client, failed_uris)
