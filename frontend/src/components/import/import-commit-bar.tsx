@@ -11,6 +11,7 @@ interface ImportCommitBarProps {
   skipDuplicateCheck: boolean;
   onSkipDuplicateCheckChange: (checked: boolean) => void;
   onSelectAll: () => void;
+  onSelectPage: () => void;
   onClear: () => void;
   onCommit: () => Promise<void> | void;
 }
@@ -23,6 +24,7 @@ export function ImportCommitBar({
   skipDuplicateCheck,
   onSkipDuplicateCheckChange,
   onSelectAll,
+  onSelectPage,
   onClear,
   onCommit,
 }: ImportCommitBarProps) {
@@ -32,6 +34,9 @@ export function ImportCommitBar({
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" onClick={onSelectAll} disabled={disabled}>
             Select All ({totalCount})
+          </Button>
+          <Button type="button" variant="outline" onClick={onSelectPage} disabled={disabled}>
+            Select Page
           </Button>
           <Button type="button" variant="outline" onClick={onClear} disabled={disabled}>
             Clear Selection

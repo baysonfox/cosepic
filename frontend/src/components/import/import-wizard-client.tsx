@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ApiError, clientFetch } from "@/lib/api/client";
+import { triggerEmbedding } from "@/lib/api/embeddings";
 import {
   cancelImport,
   commitBatch,
@@ -89,6 +90,7 @@ export function ImportWizardClient() {
   const [skipDuplicateCheck, setSkipDuplicateCheck] = useState(false);
   const [showExisting, setShowExisting] = useState(false);
   const [cancellingPackIds, setCancellingPackIds] = useState<Set<number>>(new Set());
+  const [confirmingPackIds, setConfirmingPackIds] = useState<Set<number>>(new Set());
 
   const { newCandidates, existingCandidates } = useMemo(() => {
     if (!batch) return { newCandidates: [], existingCandidates: [] };
@@ -151,6 +153,30 @@ export function ImportWizardClient() {
       setErrorMessage("取消导入失败，请重试");
     } finally {
       setCancellingPackIds((prev) => {
+        const next = new Set(prev);
+        next.delete(packId);
+        return next;
+      });
+    }
+  }
+
+  async function handleConfirmImport(packId: number) {
+    setConfirmingPackIds((prev) => new Set(prev).add(packId));
+    try {
+      await triggerEmbedding(packId);
+      setResult((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          duplicate_checks: prev.duplicate_checks.filter(
+            (dc) => dc.pack_id !== packId,
+          ),
+        };
+      });
+    } catch {
+      setErrorMessage("触发 embedding 处理失败，请重试");
+    } finally {
+      setConfirmingPackIds((prev) => {
         const next = new Set(prev);
         next.delete(packId);
         return next;
@@ -283,6 +309,14 @@ export function ImportWizardClient() {
     }
   }
 
+  async function handleSelectPage() {
+    for (const candidate of visibleCandidates) {
+      if (candidate.status !== "selected") {
+        await patchCandidate(candidate.id, { status: "selected" });
+      }
+    }
+  }
+
   async function handleClearSelection() {
     if (!batch) {
       return;
@@ -392,19 +426,30 @@ export function ImportWizardClient() {
                 : `Pack #${pack_id}`;
 
               const isCancelling = cancellingPackIds.has(pack_id);
+              const isConfirming = confirmingPackIds.has(pack_id);
 
               return (
                 <div key={pack_id} className="space-y-2 rounded-lg border p-3">
                   <div className="flex items-center justify-between">
                     <div className="font-medium">{packTitle}</div>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={isCancelling}
-                      onClick={() => handleCancelImport(pack_id)}
-                    >
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isConfirming}
+                        onClick={() => void handleConfirmImport(pack_id)}
+                      >
+                        {isConfirming ? "处理中..." : "确认导入"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={isCancelling}
+                        onClick={() => handleCancelImport(pack_id)}
+                      >
                       {isCancelling ? "取消中..." : "取消导入"}
-                    </Button>
+                      </Button>
+                    </div>
                   </div>
                   {duplicates.map((dup, idx) => (
                     <div key={idx} className="flex items-center justify-between text-sm">
@@ -591,6 +636,7 @@ export function ImportWizardClient() {
             skipDuplicateCheck={skipDuplicateCheck}
             onSkipDuplicateCheckChange={setSkipDuplicateCheck}
             onSelectAll={() => void handleSelectAll()}
+            onSelectPage={() => void handleSelectPage()}
             onClear={() => void handleClearSelection()}
             onCommit={() => void handleCommit()}
           />
