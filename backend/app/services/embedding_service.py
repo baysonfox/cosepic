@@ -291,42 +291,37 @@ async def check_pack_duplicates(db: Session, pack_id: int) -> list[dict]:
     if not sample_assets:
         return []
 
-    # 批量生成样本 embedding
-    needs_embedding = [
-        a for a in sample_assets if a.embedding is None
-    ]
+    # 收集已有 embedding，仅为缺失的样本调用推理
+    sample_embeddings: dict[int, list[float]] = {}
+    needs_embedding: list[Asset] = []
+    for a in sample_assets:
+        if a.embedding is not None:
+            sample_embeddings[a.id] = a.embedding
+        else:
+            needs_embedding.append(a)
+
     if needs_embedding:
         paths = [Path(pack.dir_path) / a.relative_path for a in needs_embedding]
         embeddings = await generate_image_embeddings(paths)
         for asset, emb in zip(needs_embedding, embeddings):
             if emb is not None:
+                sample_embeddings[asset.id] = emb
                 asset.embedding = emb
                 db.add(asset)
-        db.commit()
-        db.refresh(pack)
 
-    # 重新加载样本（确保 embedding 已填充）
-    sample_assets = [db.get(Asset, a.id) for a in sample_assets]
-    sample_assets = [a for a in sample_assets if a and a.embedding is not None]
-
-    if not sample_assets:
+    if not sample_embeddings:
         return []
 
     threshold = settings.duplicate_similarity_threshold
 
     # 格式化所有样本 embedding 为 pgvector halfvec 字符串
-    def _to_halfvec_str(emb: list[float] | None) -> str | None:
-        if emb is None:
-            return None
+    def _to_halfvec_str(emb: list[float]) -> str:
         return "[" + ",".join(str(float(v)) for v in emb) + "]"
 
     sample_data = [
-        (a.id, _to_halfvec_str(a.embedding))
-        for a in sample_assets
-        if a.embedding is not None
+        (sid, _to_halfvec_str(emb))
+        for sid, emb in sample_embeddings.items()
     ]
-    if not sample_data:
-        return []
 
     # 构建 VALUES CTE，一次性查询所有样本的最近邻
     values_rows = ", ".join(
