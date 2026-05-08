@@ -26,10 +26,11 @@ class Settings(BaseSettings):
     # Embedding API 配置
     embedding_vllm_url: str = "http://localhost:8001/v1/embeddings"
     embedding_api_url: str = "https://api.siliconflow.cn/v1/embeddings"
-    embedding_api_key: str = "sk-kevxgsoilpgrzdhjhowcujzjhfjdtaqfvndysxhmafziwsml"
+    embedding_api_key: str = ""
     embedding_model: str = "Qwen/Qwen3-VL-Embedding-8B"
     embedding_dimension: int = 2560
     embedding_image_max_size: int = 768
+    embedding_vllm_concurrency: int = 10
 
     # 去重检测配置
     duplicate_similarity_threshold: float = 0.85

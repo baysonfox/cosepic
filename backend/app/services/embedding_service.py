@@ -1,5 +1,6 @@
 """Embedding service — 图片向量化和去重检测."""
 
+import asyncio
 import base64
 import io
 from pathlib import Path
@@ -68,6 +69,57 @@ def _parse_embedding(data: dict) -> list[list[float]]:
     return results
 
 
+async def _vllm_single_image(
+    client: httpx.AsyncClient,
+    uri: str,
+    sem: asyncio.Semaphore,
+) -> list[float] | None:
+    """单张图片发给 vLLM 获取 embedding，返回向量或 None."""
+    async with sem:
+        try:
+            response = await client.post(
+                settings.embedding_vllm_url,
+                headers={"Content-Type": "application/json"},
+                json={
+                    "model": settings.embedding_model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url", "image_url": {"url": uri}},
+                            ],
+                        },
+                    ],
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            embeddings = _parse_embedding(data)
+            return embeddings[0] if embeddings else None
+        except Exception:
+            return None
+
+
+async def _siliconflow_batch(
+    client: httpx.AsyncClient,
+    uris: list[str],
+) -> list[list[float] | None]:
+    """批量图片发给 SiliconFlow 获取 embedding."""
+    response = await client.post(
+        settings.embedding_api_url,
+        headers={
+            "Authorization": f"Bearer {settings.embedding_api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": settings.embedding_model,
+            "input": [{"image": uri} for uri in uris],
+        },
+    )
+    response.raise_for_status()
+    return _parse_embedding(response.json())
+
+
 async def generate_image_embedding(image_path: str | Path) -> list[float] | None:
     """为单张图片生成 embedding 向量（兼容接口，内部使用批量方法）."""
     embeddings = await generate_image_embeddings([image_path])
@@ -77,7 +129,10 @@ async def generate_image_embedding(image_path: str | Path) -> list[float] | None
 async def generate_image_embeddings(
     image_paths: list[str | Path],
 ) -> list[list[float] | None]:
-    """为多张图片批量生成 embedding 向量，一次 API 请求完成.
+    """为多张图片批量生成 embedding 向量.
+
+    vLLM 多模态接口每次请求只返回 1 个 embedding，因此多图时拆成逐张
+    并发请求；失败的图片用 SiliconFlow batch 补救。
 
     Args:
         image_paths: 图片文件路径列表
@@ -89,72 +144,48 @@ async def generate_image_embeddings(
         return []
 
     # 编码图片
-    data_uris = []
-    for path in image_paths:
-        data_uris.append(_encode_image(path))
-
-    valid_uris = [uri for uri in data_uris if uri is not None]
-    if not valid_uris:
+    data_uris = [_encode_image(p) for p in image_paths]
+    valid_indices = [i for i, uri in enumerate(data_uris) if uri is not None]
+    if not valid_indices:
         return [None] * len(image_paths)
 
+    valid_uris = [data_uris[i] for i in valid_indices]
+    results: list[list[float] | None] = [None] * len(image_paths)
+
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            try:
-                # 尝试 vLLM
-                content_parts = [
-                    {"type": "image_url", "image_url": {"url": uri}}
-                    for uri in valid_uris
-                ]
-                response = await client.post(
-                    settings.embedding_vllm_url,
-                    headers={"Content-Type": "application/json"},
-                    json={
-                        "model": settings.embedding_model,
-                        "messages": [
-                            {
-                                "role": "user",
-                                "content": content_parts,
-                            },
-                        ],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-            except Exception as vllm_error:
-                print(f"vLLM failed, falling back to SiliconFlow: {vllm_error}")
-                response = await client.post(
-                    settings.embedding_api_url,
-                    headers={
-                        "Authorization": f"Bearer {settings.embedding_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": settings.embedding_model,
-                        "input": [{"image": uri} for uri in valid_uris],
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            sem = asyncio.Semaphore(settings.embedding_vllm_concurrency)
 
-        embeddings = _parse_embedding(data)
+            # 并发逐张请求 vLLM
+            vllm_results = await asyncio.gather(
+                *[_vllm_single_image(client, uri, sem) for uri in valid_uris],
+            )
 
-        # 将结果映射回原始顺序
-        valid_idx = 0
-        results: list[list[float] | None] = []
-        for uri in data_uris:
-            if uri is not None:
-                if valid_idx < len(embeddings):
-                    results.append(embeddings[valid_idx])
+            # 分拣成功/失败，失败的收集起来走 SiliconFlow
+            failed_uris: list[str] = []
+            failed_indices: list[int] = []
+            for idx, emb in zip(valid_indices, vllm_results):
+                if emb is not None:
+                    results[idx] = emb
                 else:
-                    results.append(None)
-                valid_idx += 1
-            else:
-                results.append(None)
-        return results
+                    failed_uris.append(data_uris[idx])
+                    failed_indices.append(idx)
+
+            # SiliconFlow batch 补救
+            if failed_uris:
+                print(
+                    f"vLLM {len(failed_uris)}/{len(valid_uris)} failed, "
+                    f"falling back to SiliconFlow"
+                )
+                sf_embeddings = await _siliconflow_batch(client, failed_uris)
+                for idx, emb in zip(failed_indices, sf_embeddings):
+                    if emb is not None:
+                        results[idx] = emb
 
     except Exception as e:
         print(f"Error generating batch embeddings: {e}")
-        return [None] * len(image_paths)
+
+    return results
 
 
 async def process_asset_embedding(db: Session, asset_id: int, pack_dir: str) -> bool:
