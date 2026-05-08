@@ -41,7 +41,7 @@ class DirParseResult:
     title: str = ""
 
 
-_STATS_RE = re.compile(r"\s+(\d+)\s*[pP](?:\s+(\d+)\s*[vV])?\s*$")
+_STATS_RE = re.compile(r"\s+(\d+)\s*[pP](?:\s*(\d+)\s*[vV])?\s*$")
 
 
 def parse_dir_name(raw: str) -> DirParseResult | None:

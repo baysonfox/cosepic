@@ -25,6 +25,11 @@ class TestBasicParsing:
         assert r.photo_count == 10
         assert r.video_count == 3
 
+    def test_stats_no_space_between_p_and_v(self):
+        r = parse_dir_name("Coser - Work - Char 24p2v")
+        assert r.photo_count == 24
+        assert r.video_count == 2
+
 
 class TestMultipleEntities:
     def test_multiple_cosers(self):
