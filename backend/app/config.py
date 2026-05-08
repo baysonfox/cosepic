@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     embedding_model: str = "Qwen/Qwen3-VL-Embedding-8B"
     embedding_dimension: int = 2560
     embedding_image_max_size: int = 768
-    embedding_vllm_concurrency: int = 10
+    embedding_vllm_concurrency: int = 32
 
     # 去重检测配置
     duplicate_similarity_threshold: float = 0.85
