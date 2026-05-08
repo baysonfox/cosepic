@@ -90,17 +90,17 @@ export function ImportWizardClient() {
   const [showExisting, setShowExisting] = useState(false);
   const [cancellingPackIds, setCancellingPackIds] = useState<Set<number>>(new Set());
 
-  const selectedCount = useMemo(
-    () => batch?.candidates.filter((candidate) => candidate.status === "selected").length ?? 0,
-    [batch],
-  );
-
   const { newCandidates, existingCandidates } = useMemo(() => {
     if (!batch) return { newCandidates: [], existingCandidates: [] };
     const newOnes = batch.candidates.filter(c => !c.existing_pack_id);
     const existing = batch.candidates.filter(c => c.existing_pack_id);
     return { newCandidates: newOnes, existingCandidates: existing };
   }, [batch]);
+
+  const selectedCount = useMemo(
+    () => newCandidates.filter((candidate) => candidate.status === "selected").length,
+    [newCandidates],
+  );
 
   const totalPages = Math.max(1, Math.ceil(newCandidates.length / PAGE_SIZE));
 
@@ -276,7 +276,7 @@ export function ImportWizardClient() {
       return;
     }
 
-    for (const candidate of batch.candidates) {
+    for (const candidate of newCandidates) {
       if (candidate.status !== "selected") {
         await patchCandidate(candidate.id, { status: "selected" });
       }
@@ -288,7 +288,7 @@ export function ImportWizardClient() {
       return;
     }
 
-    for (const candidate of batch.candidates) {
+    for (const candidate of newCandidates) {
       if (candidate.status === "selected") {
         await patchCandidate(candidate.id, { status: "pending" });
       }
