@@ -45,11 +45,11 @@ def get_asset_file(asset_id: int, db: Session = Depends(get_db)):
 
 @router.get("/api/v1/assets/{asset_id}/thumbnail")
 def get_asset_thumbnail(asset_id: int, db: Session = Depends(get_db)):
-    """Serve the AVIF thumbnail."""
+    """Serve the WebP thumbnail."""
     path = asset_service.get_asset_thumbnail_path(asset_id)
     if path is None:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
-    return FileResponse(path, media_type="image/avif")
+    return FileResponse(path, media_type="image/webp")
 
 
 class CoverRequest(BaseModel):

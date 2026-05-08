@@ -64,7 +64,7 @@ def _process_single_image(
             )
 
             # 保存缩略图
-            thumb.save(thumb_path, format="AVIF", quality=settings.thumbnail_quality)
+            thumb.save(thumb_path, format="WebP", quality=settings.thumbnail_quality)
             thumb_status = "generated"
 
             # 用已缩放的缩略图计算 BlurHash（无需再次打开源文件）
