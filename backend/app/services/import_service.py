@@ -89,6 +89,9 @@ async def commit_import(
         pack_id = _import_single_candidate(db, candidate)
         if pack_id:
             pack_ids.append(pack_id)
+            background_tasks.add_task(
+                asset_service.generate_pack_thumbnails, db, pack_id,
+            )
 
             if skip_duplicate_check:
                 background_tasks.add_task(
@@ -239,7 +242,6 @@ def _import_single_candidate(
     pack.last_scanned_at = datetime.now(timezone.utc)
     db.add(pack)
     db.commit()
-    asset_service.generate_pack_thumbnails(db, pack.id)
     return pack.id
 
 

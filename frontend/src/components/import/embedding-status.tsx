@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { getEmbeddingStatus } from "@/lib/api/embeddings";
-import { clientFetch } from "@/lib/api/client";
+
+const GRACE_PERIOD_MS = 10_000;
 
 interface EmbeddingStatusProps {
   packIds: number[];
@@ -19,9 +20,15 @@ export function EmbeddingStatus({ packIds, onComplete }: EmbeddingStatusProps) {
     processed_images: number;
     progress: number;
   }>>([]);
+  const seenActiveRef = useRef(false);
+  const graceDoneRef = useRef(false);
 
   useEffect(() => {
     if (packIds.length === 0) return;
+
+    const graceTimer = setTimeout(() => {
+      graceDoneRef.current = true;
+    }, GRACE_PERIOD_MS);
 
     const interval = setInterval(async () => {
       try {
@@ -31,7 +38,9 @@ export function EmbeddingStatus({ packIds, onComplete }: EmbeddingStatusProps) {
         );
         setProcessing(relevantPacks);
 
-        if (relevantPacks.length === 0) {
+        if (relevantPacks.length > 0) {
+          seenActiveRef.current = true;
+        } else if (seenActiveRef.current || graceDoneRef.current) {
           onComplete?.();
         }
       } catch (error) {
@@ -39,7 +48,10 @@ export function EmbeddingStatus({ packIds, onComplete }: EmbeddingStatusProps) {
       }
     }, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(graceTimer);
+    };
   }, [packIds, onComplete]);
 
   if (processing.length === 0) return null;
